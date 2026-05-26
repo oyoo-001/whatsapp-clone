@@ -1,0 +1,73 @@
+export const Colors = {
+  primary: '#075E54',
+  primaryDark: '#054D44',
+  primaryLight: '#128C7E',
+  secondary: '#25D366',
+  accent: '#34B7F1',
+  white: '#FFFFFF',
+  black: '#000000',
+  grey: '#667781',
+  lightGrey: '#E9EDEF',
+  lighterGrey: '#F0F2F5',
+  darkGrey: '#3B4A54',
+  red: '#E53935',
+  orange: '#FF9800',
+  yellow: '#FFC107',
+  green: '#4CAF50',
+  blue: '#2196F3',
+  chatBg: '#ECE5DD',
+  receivedMsg: '#FFFFFF',
+  sentMsg: '#D9FDD3',
+  statusBar: '#075E54',
+  inputBg: '#FFFFFF',
+  border: '#E9EDEF',
+  textPrimary: '#111B21',
+  textSecondary: '#667781',
+  textHint: '#8696A0',
+  divider: '#E9EDEF',
+  ripple: '#D9D9D9',
+  overlay: 'rgba(0,0,0,0.5)',
+  online: '#4CAF50',
+  offline: '#B0BEC5',
+  notification: '#25D366',
+};
+
+export const Fonts = {
+  sizes: {
+    xs: 11,
+    sm: 13,
+    md: 15,
+    lg: 17,
+    xl: 20,
+    xxl: 24,
+    title: 28,
+    header: 32,
+  },
+  weights: {
+    light: '300',
+    regular: '400',
+    medium: '500',
+    semiBold: '600',
+    bold: '700',
+  },
+};
+
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+};
+
+export const BorderRadius = {
+  sm: 4,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  xxl: 20,
+  round: 50,
+  full: 9999,
+};

@@ -1,0 +1,72 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: '/api',
+  timeout: 15000,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+export const setAuthToken = (token) => {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+};
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) setAuthToken(null);
+    return Promise.reject(err);
+  }
+);
+
+export const authAPI = {
+  register: (data) => api.post('/auth/register', data),
+  login: (data) => api.post('/auth/login', data),
+  getMe: () => api.get('/auth/me'),
+  updateProfile: (data) => api.put('/auth/profile', data),
+};
+
+export const usersAPI = {
+  search: (query) => api.get(`/users/search?query=${encodeURIComponent(query)}`),
+  searchByPhone: (phoneNumber) => api.get(`/users/search-by-phone?phoneNumber=${encodeURIComponent(phoneNumber)}`),
+  getProfile: (userId) => api.get(`/users/${userId}`),
+  getContacts: () => api.get('/users/contacts'),
+  addContact: (data) => api.post('/users/contacts', data),
+  removeContact: (contactId) => api.delete(`/users/contacts/${contactId}`),
+  blockContact: (contactUserId) => api.put(`/users/contacts/${contactUserId}/block`),
+};
+
+export const messagesAPI = {
+  getConversations: () => api.get('/messages/conversations'),
+  getMessages: (userId, params) => api.get(`/messages/${userId}`, { params }),
+  sendMessage: (data) => api.post('/messages', data),
+  markAsRead: (userId) => api.put(`/messages/${userId}/read`),
+  editMessage: (messageId, content) => api.put(`/messages/${messageId}/edit`, { content }),
+  deleteMessage: (messageId, mode) => api.delete(`/messages/${messageId}?mode=${mode}`),
+  forwardMessage: (messageId, receiverId) => api.post('/messages/forward', { messageId, receiverId }),
+  addReaction: (messageId, reaction) => api.put(`/messages/${messageId}/reaction`, { reaction }),
+};
+
+export const callsAPI = {
+  initiateCall: (data) => api.post('/calls/initiate', data),
+  updateCallStatus: (callId, status) => api.put(`/calls/${callId}/status`, { callStatus: status }),
+  getHistory: () => api.get('/calls/history'),
+  joinMeeting: (callId) => api.post(`/calls/${callId}/join`),
+};
+
+export const uploadAPI = {
+  upload: (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: onProgress,
+      timeout: 120000,
+    });
+  },
+};
+
+export { api as default };
