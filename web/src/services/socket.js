@@ -1,5 +1,7 @@
 import { io } from 'socket.io-client';
 
+const SOCKET_URL = import.meta.env.VITE_API_URL || '';
+
 class SocketService {
   constructor() {
     this.socket = null;
@@ -8,7 +10,7 @@ class SocketService {
 
   connect(token) {
     if (this.socket?.connected) return;
-    this.socket = io('/', {
+    this.socket = io(SOCKET_URL || '/', {
       auth: { token },
       transports: ['websocket'],
       reconnection: true,
