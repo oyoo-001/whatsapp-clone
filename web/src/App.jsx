@@ -2,7 +2,9 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastProvider } from './components/Toast';
 import useAuthStore from './stores/authStore';
+import useChatStore from './stores/chatStore';
 import useCallStore from './stores/callStore';
+import socketService from './services/socket';
 import OngoingCallBanner from './components/OngoingCallBanner';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -19,7 +21,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import './styles/global.css';
 
 const App = () => {
-  const { isLoading, loadUser } = useAuthStore();
+  const { initialLoading, loadUser } = useAuthStore();
   const activeCall = useCallStore((s) => s.activeCall);
 
   useEffect(() => {
@@ -28,7 +30,23 @@ const App = () => {
     loadUser();
   }, []);
 
-  if (isLoading) return <LoadingPage />;
+  useEffect(() => {
+    if (!useAuthStore.getState().isAuthenticated) return;
+
+    const u1 = socketService.on('chat:delivered', () => {
+      useChatStore.getState().fetchConversations(true);
+    });
+    const u2 = socketService.on('chat:read', () => {
+      useChatStore.getState().fetchConversations(true);
+    });
+    const u3 = socketService.on('conversation:update', () => {
+      useChatStore.getState().fetchConversations(true);
+    });
+
+    return () => { u1(); u2(); u3(); };
+  }, [useAuthStore.getState().isAuthenticated]);
+
+  if (initialLoading) return <LoadingPage />;
 
   return (
     <ToastProvider>

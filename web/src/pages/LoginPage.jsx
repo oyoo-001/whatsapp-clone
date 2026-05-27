@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MessageCircle, Phone, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { MessageCircle, Phone, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
+import { useToast } from '../components/Toast';
 import { Colors } from '../styles/theme';
 
 const LoginPage = () => {
@@ -9,21 +10,28 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const { login, isLoading, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
+  const toast = useToast();
 
   useEffect(() => { if (isAuthenticated) navigate('/', { replace: true }); }, [isAuthenticated]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!phone.trim()) return setError('Phone number is required');
-    if (!password) return setError('Password is required');
+    setSuccess('');
+    if (!phone.trim()) { const m = 'Phone number is required'; setError(m); toast(m, 'error'); return; }
+    if (!password) { const m = 'Password is required'; setError(m); toast(m, 'error'); return; }
     try {
       await login(phone, password);
-      navigate('/', { replace: true });
+      setSuccess('Welcome back!');
+      toast('Welcome back!', 'success');
+      setTimeout(() => navigate('/', { replace: true }), 400);
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid credentials');
+      const m = err.response?.data?.error || 'Invalid credentials';
+      setError(m);
+      toast(m, 'error');
     }
   };
 
@@ -47,6 +55,17 @@ const LoginPage = () => {
         boxShadow: '0 -12px 40px rgba(0,0,0,0.1)',
         animation: 'slideUp 0.5s ease 0.15s both',
       }}>
+        {success && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: '#E8F5E9', border: '1px solid #A5D6A7',
+            borderRadius: 12, padding: '12px 14px', color: '#2E7D32', fontSize: 13,
+            fontWeight: 500, animation: 'fadeIn 0.2s ease',
+          }}>
+            <CheckCircle size={18} color="#2E7D32" style={{ flexShrink: 0 }} />
+            <span>{success}</span>
+          </div>
+        )}
         {error && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,

@@ -6,6 +6,7 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.listeners = new Map();
+    this._reconnectCallbacks = new Set();
   }
 
   connect(token) {
@@ -16,6 +17,9 @@ class SocketService {
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+    });
+    this.socket.on('connect', () => {
+      this._reconnectCallbacks.forEach((cb) => cb());
     });
     this.listeners.forEach((handlers, event) => {
       handlers.forEach((handler) => this.socket.on(event, handler));
@@ -44,6 +48,15 @@ class SocketService {
 
   emit(event, data) {
     if (this.socket?.connected) this.socket.emit(event, data);
+  }
+
+  isConnected() {
+    return this.socket?.connected || false;
+  }
+
+  onReconnect(cb) {
+    this._reconnectCallbacks.add(cb);
+    return () => this._reconnectCallbacks.delete(cb);
   }
 }
 

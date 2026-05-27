@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { FileText, Mic, Image, X, Check, CheckCheck, Reply, Edit3, ZoomIn, ZoomOut } from 'lucide-react';
 import { Colors } from '../styles/theme';
 
-const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEditing }) => {
+const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEditing, onRetry }) => {
   const [imgError, setImgError] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -240,7 +240,23 @@ const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEd
             {formatTime(message.createdAt)}
           </span>
           {isMine && !message.isDeleted && (
-            message.isRead
+            message._sending ? (
+              <span style={{ fontSize: 10, color: Colors.textHint, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <span style={{
+                  width: 10, height: 10, borderRadius: '50%', display: 'inline-block',
+                  border: '2px solid rgba(0,0,0,0.1)', borderTopColor: Colors.textHint,
+                  animation: 'spin 0.7s linear infinite',
+                }} />
+              </span>
+            ) : message._failed ? (
+              <span onClick={(e) => { e.stopPropagation(); onRetry?.(message); }}
+                style={{ fontSize: 10, color: Colors.red, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                title="Failed — tap to retry">
+                <span style={{ fontWeight: 700, fontSize: 13 }}>!</span>
+              </span>
+            ) : message._offline ? (
+              <span style={{ fontSize: 10, color: Colors.textHint }}>pending</span>
+            ) : message.isRead
               ? <CheckCheck size={14} color={Colors.accent} />
               : message.isDelivered
                 ? <CheckCheck size={14} color={Colors.textHint} />

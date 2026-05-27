@@ -9,9 +9,14 @@ exports.register = async (req, res) => {
       return res.status(400).json({ error: 'Phone number, username and password are required' });
     }
 
-    const existingUser = await User.findOne({ where: { phoneNumber } });
-    if (existingUser) {
+    const existingPhone = await User.findOne({ where: { phoneNumber } });
+    if (existingPhone) {
       return res.status(400).json({ error: 'Phone number already registered' });
+    }
+
+    const existingUsername = await User.findOne({ where: { username } });
+    if (existingUsername) {
+      return res.status(400).json({ error: 'Username already taken' });
     }
 
     const user = await User.create({ phoneNumber, username, password, email });

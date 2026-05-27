@@ -31,7 +31,7 @@ const ChatPage = () => {
   const { messages, fetchMessages, sendMessage, isLoadingMessages, addMessage, markAsRead,
     replyTo, editMessage, forwardMessage,
     setReplyTo, setEditMessage, setForwardMessage,
-    editMessageAction, deleteMessageAction } = useChatStore();
+    editMessageAction, deleteMessageAction, retrySendMessage } = useChatStore();
   const { addContact } = useContactStore();
   const toast = useToast();
   const [text, setText] = useState('');
@@ -45,6 +45,8 @@ const ChatPage = () => {
   const [showEmoji, setShowEmoji] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextPos, setContextPos] = useState(null);
   const [contextMessage, setContextMessage] = useState(null);
@@ -201,6 +203,7 @@ const ChatPage = () => {
     setReplyTo(null);
     setEditMessage(null);
     setText('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
   };
 
   const handleSend = async (overrideContent) => {
@@ -210,16 +213,26 @@ const ChatPage = () => {
       if (editMessage) {
         await editMessageAction(editMessage.id, content);
         setText('');
+        inputRef.current.style.height = 'auto';
         return;
       }
-      await sendMessage({ receiverId: uid, content, messageType: 'text' });
+        await sendMessage({ receiverId: uid, content, messageType: 'text' });
       socketService.emit('chat:typing', { to: uid, isTyping: false });
       setText('');
+      if (inputRef.current) inputRef.current.style.height = 'auto';
       setShowEmoji(false);
     } catch (err) {
       const msg = err.response?.data?.error;
       if (msg?.includes('blocked')) toast('Cannot send — user is blocked', 'error');
       else toast('Failed to send message', 'error');
+    }
+  };
+
+  const handleRetry = async (failedMessage) => {
+    try {
+      await retrySendMessage(failedMessage);
+    } catch {
+      toast('Retry failed', 'error');
     }
   };
 
@@ -247,19 +260,28 @@ const ChatPage = () => {
     setText((prev) => prev + emoji);
   };
 
-  const handleFileUpload = async (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setPreviewFile(file);
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+    if (e.target) e.target.value = '';
+  };
+
+  const handleSendFile = async () => {
+    if (!previewFile) return;
     setUploading(true);
     try {
-      const { data } = await uploadAPI.upload(file);
-      const isImg = file.type.startsWith('image/');
-      const isVid = file.type.startsWith('video/');
-      const isAud = file.type.startsWith('audio/');
+      const { data } = await uploadAPI.upload(previewFile);
+      const isImg = previewFile.type.startsWith('image/');
+      const isVid = previewFile.type.startsWith('video/');
+      const isAud = previewFile.type.startsWith('audio/');
       const msgType = isImg ? 'image' : isVid ? 'video' : isAud ? 'audio' : 'file';
       await sendMessage({
         receiverId: uid,
-        content: file.name,
+        content: previewFile.name,
         messageType: msgType,
         fileUrl: data.fileUrl,
         fileSize: data.fileSize,
@@ -268,7 +290,15 @@ const ChatPage = () => {
       toast('File sent', 'success');
     } catch { toast('Failed to upload file', 'error'); }
     setUploading(false);
-    if (e.target) e.target.value = '';
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setPreviewFile(null);
+  };
+
+  const handleCancelPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setPreviewFile(null);
   };
 
   const handleVoiceSend = async (blob, duration) => {
@@ -520,7 +550,8 @@ const ChatPage = () => {
                 <MessageBubble message={msg} isMine={msg.senderId === currentUser.id}
                   onLongPress={(message, pos) => { setContextMessage(message); setContextPos(pos); setShowContextMenu(true); }}
                   isReplying={replyTo?.id === msg.id}
-                  isEditing={editMessage?.id === msg.id} />
+                  isEditing={editMessage?.id === msg.id}
+                  onRetry={handleRetry} />
               </div>
             ))}
           </>
@@ -628,6 +659,46 @@ const ChatPage = () => {
         </div>
       )}
 
+      {previewFile && (
+        <div style={{
+          background: Colors.chatBg, padding: '8px 12px', display: 'flex',
+          alignItems: 'center', gap: 10, borderTop: `1px solid ${Colors.border}`,
+          animation: 'slideUp 0.15s ease',
+        }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 10, overflow: 'hidden',
+            background: '#E8E8E8', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', flexShrink: 0,
+          }}>
+            {previewFile.type.startsWith('image/') ? (
+              <img src={previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : previewFile.type.startsWith('video/') ? (
+              <video src={previewUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <Paperclip size={20} color={Colors.grey} />
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: Colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {previewFile.name}
+            </div>
+            <div style={{ fontSize: 11, color: Colors.textHint }}>
+              {(previewFile.size / 1024).toFixed(1)} KB
+            </div>
+          </div>
+          <button onClick={handleCancelPreview} disabled={uploading} style={{ background: 'none', border: 'none', cursor: uploading ? 'not-allowed' : 'pointer', color: Colors.textHint, padding: 4, display: 'flex' }}>
+            <X size={18} />
+          </button>
+          <button onClick={handleSendFile} disabled={uploading} style={{
+            background: uploading ? Colors.textHint : Colors.primary, border: 'none', borderRadius: '50%',
+            width: 38, height: 38, cursor: uploading ? 'not-allowed' : 'pointer', color: Colors.white,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            {uploading ? <span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: Colors.white, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /> : <Send size={16} />}
+          </button>
+        </div>
+      )}
+
       {showVoice ? (
         <VoiceRecorder onSend={handleVoiceSend} onCancel={() => setShowVoice(false)} />
       ) : !isBlocked && (
@@ -635,21 +706,26 @@ const ChatPage = () => {
           display: 'flex', alignItems: 'flex-end', gap: 6, padding: '8px 10px',
           background: Colors.inputBg, zIndex: 10,
         }}>
-          <input ref={fileInputRef} type="file" onChange={handleFileUpload} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" style={{ display: 'none' }} />
-          <input ref={imageInputRef} type="file" onChange={handleFileUpload} accept="image/*" style={{ display: 'none' }} />
+          <input ref={fileInputRef} type="file" onChange={handleFileSelect} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" style={{ display: 'none' }} />
+          <input ref={imageInputRef} type="file" onChange={handleFileSelect} accept="image/*" style={{ display: 'none' }} />
           <div style={{ display: 'flex', gap: 2 }}>
             <button onClick={() => fileInputRef.current?.click()} style={inputBtn} title="Attach file" disabled={uploading}>
               {uploading ? <span style={{ width: 18, height: 18, border: '2px solid #ddd', borderTopColor: Colors.primary, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /> : <Paperclip size={20} />}
             </button>
           </div>
-          <div style={{ flex: 1, background: Colors.white, borderRadius: 24, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 4, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <input ref={inputRef} value={text} onChange={(e) => onType(e.target.value)} onKeyDown={handleKeyDown}
+          <div style={{ flex: 1, background: Colors.white, borderRadius: 24, padding: '2px 14px', display: 'flex', alignItems: 'flex-end', gap: 4, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <textarea ref={inputRef} value={text} onChange={(e) => {
+              onType(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }} onKeyDown={handleKeyDown} rows={1}
               placeholder={editMessage ? 'Edit message...' : 'Type a message'}
               style={{
                 flex: 1, border: 'none', fontSize: 15, outline: 'none',
-                fontFamily: 'inherit', background: 'transparent', padding: '4px 0',
+                fontFamily: 'inherit', background: 'transparent', padding: '8px 0',
+                resize: 'none', maxHeight: 120, lineHeight: '20px', overflowY: 'auto',
               }} />
-            <button onClick={() => setShowEmoji(!showEmoji)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: showEmoji ? Colors.primary : Colors.textHint, display: 'flex' }}>
+            <button onClick={() => setShowEmoji(!showEmoji)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: showEmoji ? Colors.primary : Colors.textHint, display: 'flex', marginBottom: 6 }}>
               <Smile size={20} />
             </button>
           </div>

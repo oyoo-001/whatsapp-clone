@@ -31,6 +31,7 @@ const CallPage = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [duration, setDuration] = useState(0);
+  const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [pip, setPip] = useState(true);
   const [isOnHold, setIsOnHold] = useState(false);
@@ -88,9 +89,9 @@ const CallPage = () => {
   useEffect(() => { callStateRef.current = callState; }, [callState]);
 
   useEffect(() => {
-    if (localRef.current && webrtcService.localStream)
-      localRef.current.srcObject = webrtcService.localStream;
-  }, [webrtcService.localStream]);
+    if (localRef.current && localStream)
+      localRef.current.srcObject = localStream;
+  }, [localStream]);
 
   useEffect(() => {
     if (remoteRef.current && remoteStream && isVideo)
@@ -178,6 +179,7 @@ const CallPage = () => {
     try {
       const ok = await webrtcService.startCall(uid, isVideo);
       if (!ok) return navigate('/');
+      if (webrtcService.localStream) setLocalStream(webrtcService.localStream);
       let logId = null;
       try {
         const { data } = await callsAPI.initiateCall({
@@ -203,6 +205,7 @@ const CallPage = () => {
     setCallState('connected');
     const ok = await webrtcService.acceptCall(isVideo);
     if (!ok) return endCall();
+    if (webrtcService.localStream) setLocalStream(webrtcService.localStream);
     socketService.emit('call:accept', { to: uid });
     if (callLogId) {
       try { await callsAPI.updateCallStatus(callLogId, 'answered'); } catch {}
@@ -324,7 +327,7 @@ const CallPage = () => {
         <audio ref={audioRef} autoPlay playsInline className="remote-audio" style={{ display: 'none' }} />
       )}
 
-      {isVideo && webrtcService.localStream && pip && (
+      {isVideo && localStream && pip && (
         <div style={{
           position: 'absolute', top: 20, right: 20, width: 120, height: 180,
           borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
@@ -337,20 +340,16 @@ const CallPage = () => {
       )}
 
       <div style={{
-        padding: '24px 20px 48px', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', gap: 28, zIndex: 10,
+        padding: '20px 20px 48px', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', gap: 20, zIndex: 10,
         background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
       }}>
-        {callState === 'ringing' && isIncoming ? (
-          <div style={{ display: 'flex', gap: 56 }}>
-            <CtrlBtn icon={<PhoneOff size={24} />} label="Decline" onClick={rejectCall}
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center', justifyContent: 'center' }}>
+          {callState === 'ringing' && isIncoming ? (
+            <CtrlBtn icon={<PhoneOff size={22} />} label="Decline" onClick={rejectCall}
               bg="#E53935" />
-            <CtrlBtn icon={<Phone size={24} />} label="Accept" onClick={acceptCall}
-              bg={Colors.green} />
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
+          ) : (
+            <>
               <CtrlBtn icon={isMuted ? <MicOff size={20} /> : <Mic size={20} />}
                 label={isMuted ? 'Unmute' : 'Mute'} onClick={toggleMute}
                 active={isMuted} />
@@ -362,26 +361,26 @@ const CallPage = () => {
                   label={isVideo ? 'Video' : 'Off'} onClick={toggleVideo}
                   active={!isVideo} />
               )}
-              {isVideo && (
-                <CtrlBtn icon={pip ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-                  label={pip ? 'PiP' : 'Full'} onClick={() => setPip(!pip)} />
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 36, alignItems: 'center' }}>
               <CtrlBtn icon={<UserPlus size={20} />} label="Add" onClick={addParticipant}
                 bg="rgba(255,255,255,0.1)" />
               <CtrlBtn icon={isOnHold ? <Play size={20} /> : <Pause size={20} />}
                 label={isOnHold ? 'Resume' : 'Hold'} onClick={toggleHold}
                 active={isOnHold} />
-              <button onClick={endCall} style={{
-                width: 64, height: 64, borderRadius: '50%', background: Colors.red,
-                border: 'none', cursor: 'pointer', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 24px rgba(229,57,53,0.5)',
-              }}><Phone size={26} color={Colors.white} style={{ transform: 'rotate(135deg)' }} /></button>
-              <div style={{ width: 52 }} />
-            </div>
-          </>
+              {isVideo && (
+                <CtrlBtn icon={pip ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                  label={pip ? 'PiP' : 'Full'} onClick={() => setPip(!pip)} />
+              )}
+            </>
+          )}
+        </div>
+
+        {callState === 'ringing' && isIncoming ? (
+          <MainBtn icon={<Phone size={28} />} label="Accept" onClick={acceptCall}
+            bg={Colors.green} boxShadow="0 4px 24px rgba(37,211,102,0.5)" />
+        ) : (
+          <MainBtn icon={<Phone size={28} style={{ transform: 'rotate(135deg)' }} />}
+            label="End" onClick={endCall}
+            bg={Colors.red} boxShadow="0 4px 24px rgba(229,57,53,0.5)" />
         )}
       </div>
     </div>
@@ -389,15 +388,27 @@ const CallPage = () => {
 };
 
 const CtrlBtn = ({ icon, label, onClick, active, bg }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
     <button onClick={onClick} style={{
-      width: 52, height: 52, borderRadius: '50%',
+      width: 48, height: 48, borderRadius: '50%',
       background: active ? '#E53935' : (bg || 'rgba(255,255,255,0.1)'),
       border: 'none', cursor: 'pointer', display: 'flex',
       alignItems: 'center', justifyContent: 'center', color: Colors.white,
       transition: 'all 0.2s', backdropFilter: active ? 'none' : 'blur(8px)',
     }}>{icon}</button>
-    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 500 }}>{label}</span>
+    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: 500 }}>{label}</span>
+  </div>
+);
+
+const MainBtn = ({ icon, label, onClick, bg, boxShadow }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+    <button onClick={onClick} style={{
+      width: 72, height: 72, borderRadius: '50%',
+      background: bg, border: 'none', cursor: 'pointer', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', color: Colors.white,
+      boxShadow: boxShadow || 'none', transition: 'all 0.2s',
+    }}>{icon}</button>
+    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600 }}>{label}</span>
   </div>
 );
 

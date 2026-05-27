@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Shield, Lock, Palette, Moon, Sun,
-  Smartphone, Download, X, Check, Bell
+  Smartphone, Download, X, Check, Bell, User, Camera, Edit3
 } from 'lucide-react';
+import useAuthStore from '../stores/authStore';
+import { uploadAPI } from '../services/api';
 import { Colors } from '../styles/theme';
 import { useToast } from '../components/Toast';
 
@@ -16,8 +18,10 @@ const setThemeStore = (t) => {
 const getChatPin = () => localStorage.getItem('chatPin');
 
 const SettingsPage = () => {
+  const { user, updateProfile } = useAuthStore();
   const navigate = useNavigate();
   const toast = useToast();
+  const avatarInputRef = useRef(null);
   const [theme, setThemeState] = useState(getTheme());
   const [appLocked, setAppLocked] = useState(localStorage.getItem('appLock') === 'true');
   const [chatLocked, setChatLocked] = useState(!!getChatPin());
@@ -27,6 +31,46 @@ const SettingsPage = () => {
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [pinMode, setPinMode] = useState('set');
+  const [editing, setEditing] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const hue = user?.id ? (user.id * 60) % 360 : 180;
+
+  const handleEditStart = (field) => {
+    setEditValue(field === 'username' ? user?.username || '' : user?.status || '');
+    setEditing(field);
+  };
+
+  const handleEditSave = async () => {
+    if (!editValue.trim() && editing === 'username') return;
+    setSaving(true);
+    try {
+      await updateProfile({ [editing]: editValue.trim() });
+      toast(`${editing === 'username' ? 'Username' : 'Status'} updated`, 'success');
+      setEditing(null);
+    } catch { toast('Failed to update', 'error'); }
+    setSaving(false);
+  };
+
+  const handleEditCancel = () => {
+    setEditing(null);
+    setEditValue('');
+  };
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const { data } = await uploadAPI.upload(file);
+      await updateProfile({ avatar: data.fileUrl });
+      toast('Profile picture updated', 'success');
+    } catch { toast('Failed to update picture', 'error'); }
+    setUploadingAvatar(false);
+    if (e.target) e.target.value = '';
+  };
 
   useEffect(() => {
     const handler = (e) => {
@@ -184,6 +228,99 @@ const SettingsPage = () => {
       </header>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, padding: '16px',
+          background: Colors.white, borderBottom: '6px solid #F0F2F5',
+          animation: 'fadeInUp 0.25s ease',
+        }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%',
+              background: user?.avatar ? 'none' : `hsl(${hue}, 45%, 45%)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: Colors.white, fontWeight: 700, fontSize: 22, overflow: 'hidden',
+            }}>
+              {user?.avatar ? (
+                <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : user?.username?.charAt(0).toUpperCase() || '?'}
+            </div>
+            <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} style={{ display: 'none' }} />
+            <button onClick={() => avatarInputRef.current?.click()} disabled={uploadingAvatar} style={{
+              position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: '50%',
+              background: uploadingAvatar ? '#999' : Colors.secondary, border: '2px solid white', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+            }}>
+              {uploadingAvatar ? (
+                <span style={{ width: 10, height: 10, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: Colors.white, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              ) : <Camera size={10} color={Colors.white} />}
+            </button>
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {editing === 'username' ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input autoFocus value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(); if (e.key === 'Escape') handleEditCancel(); }}
+                  placeholder="Username"
+                  maxLength={30}
+                  style={{
+                    flex: 1, padding: '6px 10px', border: '2px solid #E9EDEF', borderRadius: 8,
+                    fontSize: 15, fontWeight: 600, outline: 'none', fontFamily: 'inherit',
+                  }} />
+                <button onClick={handleEditSave} disabled={saving} style={{
+                  background: Colors.primary, border: 'none', borderRadius: 8, padding: '6px 10px',
+                  cursor: 'pointer', color: Colors.white, display: 'flex',
+                }}><Check size={16} /></button>
+                <button onClick={handleEditCancel} style={{
+                  background: '#E9EDEF', border: 'none', borderRadius: 8, padding: '6px 10px',
+                  cursor: 'pointer', color: Colors.textSecondary, display: 'flex',
+                }}><X size={16} /></button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 16, fontWeight: 600, color: Colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.username || 'User'}
+                </span>
+                <button onClick={() => handleEditStart('username')} style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: Colors.textHint, display: 'flex', flexShrink: 0,
+                }}><Edit3 size={14} /></button>
+              </div>
+            )}
+
+            {editing === 'status' ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                <input autoFocus value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(); if (e.key === 'Escape') handleEditCancel(); }}
+                  placeholder="What's your status?"
+                  maxLength={100}
+                  style={{
+                    flex: 1, padding: '6px 10px', border: '2px solid #E9EDEF', borderRadius: 8,
+                    fontSize: 13, outline: 'none', fontFamily: 'inherit',
+                  }} />
+                <button onClick={handleEditSave} disabled={saving} style={{
+                  background: Colors.primary, border: 'none', borderRadius: 8, padding: '6px 10px',
+                  cursor: 'pointer', color: Colors.white, display: 'flex',
+                }}><Check size={16} /></button>
+                <button onClick={handleEditCancel} style={{
+                  background: '#E9EDEF', border: 'none', borderRadius: 8, padding: '6px 10px',
+                  cursor: 'pointer', color: Colors.textSecondary, display: 'flex',
+                }}><X size={16} /></button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <span style={{ fontSize: 13, color: Colors.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.status || 'Hey there! I am using WhatsApp Clone'}
+                </span>
+                <button onClick={() => handleEditStart('status')} style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: Colors.textHint, display: 'flex', flexShrink: 0,
+                }}><Edit3 size={12} /></button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {sectionTitle('Privacy')}
 
         {menuItem(<Lock size={18} />, 'Chat Lock', chatLocked ? 'PIN enabled' : 'Lock individual chats', <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -237,13 +374,13 @@ const SettingsPage = () => {
 
         {menuItem(<Palette size={18} />, 'Theme', theme === 'dark' ? 'Dark mode' : 'Light mode',
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={(e) => { e.stopPropagation(); switchTheme('light'); }} style={{
+            <button onClick={(e) => { e.stopPropagation(); setThemeState('light'); setThemeStore('light'); }} style={{
               padding: '6px 10px', borderRadius: 8, border: theme === 'light' ? `2px solid ${Colors.primary}` : '1px solid #E0E0E0',
               background: theme === 'light' ? '#E8F5E9' : 'none', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: Colors.textPrimary,
             }}>
               <Sun size={14} /> Light
             </button>
-            <button onClick={(e) => { e.stopPropagation(); switchTheme('dark'); }} style={{
+            <button onClick={(e) => { e.stopPropagation(); setThemeState('dark'); setThemeStore('dark'); }} style={{
               padding: '6px 10px', borderRadius: 8, border: theme === 'dark' ? `2px solid ${Colors.primary}` : '1px solid #E0E0E0',
               background: theme === 'dark' ? '#E8F5E9' : 'none', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: Colors.textPrimary,
             }}>

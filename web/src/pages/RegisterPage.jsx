@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Phone, Lock, ArrowLeft, Globe, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { User, Phone, Lock, ArrowLeft, Globe, AlertCircle, CheckCircle } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
+import { useToast } from '../components/Toast';
 import { Colors } from '../styles/theme';
 
 const COUNTRY_CODES = {
@@ -24,11 +25,12 @@ const COUNTRY_CODES = {
 const RegisterPage = () => {
   const [form, setForm] = useState({ username: '', phoneNumber: '', password: '', confirmPassword: '' });
   const { register, isLoading, isAuthenticated } = useAuthStore();
-  const [dialog, setDialog] = useState(null);
+  const [alert, setAlert] = useState(null);
   const [countryCode, setCountryCode] = useState('+254');
   const [detecting, setDetecting] = useState(true);
   const [showCodePicker, setShowCodePicker] = useState(false);
   const navigate = useNavigate();
+  const toast = useToast();
 
   useEffect(() => { if (isAuthenticated) navigate('/', { replace: true }); }, [isAuthenticated]);
 
@@ -47,24 +49,26 @@ const RegisterPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setDialog(null);
-    if (!form.username.trim()) return setDialog({ type: 'error', title: 'Validation', message: 'Username is required' });
+    setAlert(null);
+    if (!form.username.trim()) { const m = 'Username is required'; setAlert({ type: 'error', message: m }); toast(m, 'error'); return; }
     const fullNumber = `${countryCode}${form.phoneNumber.replace(/\s/g, '')}`;
-    if (!fullNumber || fullNumber === countryCode) return setDialog({ type: 'error', title: 'Validation', message: 'Phone number is required' });
-    if (!form.password) return setDialog({ type: 'error', title: 'Validation', message: 'Password is required' });
-    if (form.password !== form.confirmPassword) return setDialog({ type: 'error', title: 'Validation', message: 'Passwords do not match' });
-    if (form.password.length < 6) return setDialog({ type: 'error', title: 'Validation', message: 'Password must be at least 6 characters' });
+    if (!fullNumber || fullNumber === countryCode) { const m = 'Phone number is required'; setAlert({ type: 'error', message: m }); toast(m, 'error'); return; }
+    if (!form.password) { const m = 'Password is required'; setAlert({ type: 'error', message: m }); toast(m, 'error'); return; }
+    if (form.password !== form.confirmPassword) { const m = 'Passwords do not match'; setAlert({ type: 'error', message: m }); toast(m, 'error'); return; }
+    if (form.password.length < 6) { const m = 'Password must be at least 6 characters'; setAlert({ type: 'error', message: m }); toast(m, 'error'); return; }
     try {
       await register({ username: form.username, phoneNumber: fullNumber, password: form.password });
-      setDialog({ type: 'success', title: 'Account Created', message: 'Welcome to WhatsApp Clone! You are being signed in...' });
-      setTimeout(() => navigate('/', { replace: true }), 800);
+      const m = 'Account created! Welcome to WhatsApp Clone.';
+      setAlert({ type: 'success', message: m });
+      toast(m, 'success', 3000);
+      setTimeout(() => navigate('/', { replace: true }), 1200);
     } catch (err) {
       const msg = err.response?.data?.error;
-      if (msg?.toLowerCase().includes('unique') || msg?.toLowerCase().includes('duplicate') || msg?.toLowerCase().includes('already')) {
-        setDialog({ type: 'error', title: 'Registration Failed', message: 'This phone number is already registered' });
-      } else {
-        setDialog({ type: 'error', title: 'Registration Failed', message: msg || 'Registration failed' });
-      }
+      const m = (msg?.toLowerCase().includes('unique') || msg?.toLowerCase().includes('duplicate') || msg?.toLowerCase().includes('already'))
+        ? msg || 'This phone number or username is already taken'
+        : msg || 'Registration failed';
+      setAlert({ type: 'error', message: m });
+      toast(m, 'error');
     }
   };
 
@@ -93,6 +97,22 @@ const RegisterPage = () => {
         boxShadow: '0 -12px 40px rgba(0,0,0,0.1)',
         animation: 'slideUp 0.5s ease 0.15s both',
       }}>
+        {alert && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: alert.type === 'error' ? '#FEF2F2' : '#E8F5E9',
+            border: alert.type === 'error' ? '1px solid #FECACA' : '1px solid #A5D6A7',
+            borderRadius: 12, padding: '12px 14px',
+            color: alert.type === 'error' ? '#B91C1C' : '#2E7D32', fontSize: 13,
+            fontWeight: 500, animation: 'fadeIn 0.2s ease',
+          }}>
+            {alert.type === 'error'
+              ? <AlertCircle size={18} color="#DC2626" style={{ flexShrink: 0 }} />
+              : <CheckCircle size={18} color="#2E7D32" style={{ flexShrink: 0 }} />}
+            <span>{alert.message}</span>
+          </div>
+        )}
+
         <div style={fieldGroup}>
           <label style={fieldLabel}>USERNAME</label>
           <div style={inputWrapper}>
@@ -156,37 +176,6 @@ const RegisterPage = () => {
             <input value={form.confirmPassword} onChange={update('confirmPassword')} placeholder="Re-enter your password" type="password" style={inputField} />
           </div>
         </div>
-
-        {dialog && (
-          <div onClick={() => setDialog(null)} style={{
-            position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            animation: 'fadeIn 0.2s',
-          }}>
-            <div onClick={(e) => e.stopPropagation()} style={{
-              background: Colors.white, borderRadius: 24, padding: '32px 28px 24px',
-              width: 320, textAlign: 'center', animation: 'scaleIn 0.25s ease',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
-            }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: '50%', margin: '0 auto 16px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: dialog.type === 'error' ? '#FEE2E2' : '#E8F5E9',
-              }}>
-                {dialog.type === 'error'
-                  ? <AlertCircle size={28} color="#DC2626" />
-                  : <CheckCircle size={28} color="#16A34A" />}
-              </div>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: Colors.textPrimary, margin: '0 0 6px' }}>{dialog.title}</h3>
-              <p style={{ fontSize: 14, color: Colors.textSecondary, margin: '0 0 20px', lineHeight: 1.5 }}>{dialog.message}</p>
-              <button onClick={() => setDialog(null)} style={{
-                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
-                background: dialog.type === 'error' ? '#F5F5F5' : Colors.primary, cursor: 'pointer',
-                fontWeight: 600, fontSize: 15, color: dialog.type === 'error' ? Colors.textPrimary : Colors.white,
-              }}>OK</button>
-            </div>
-          </div>
-        )}
 
         <button disabled={isLoading} style={{
           ...btnStyle, opacity: isLoading ? 0.85 : 1, marginTop: 6,

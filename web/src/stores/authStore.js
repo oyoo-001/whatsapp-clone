@@ -7,6 +7,7 @@ const useAuthStore = create((set) => ({
   token: null,
   isAuthenticated: false,
   isLoading: false,
+  initialLoading: true,
 
   login: async (phoneNumber, password) => {
     set({ isLoading: true });
@@ -50,16 +51,17 @@ const useAuthStore = create((set) => ({
   },
 
   loadUser: async () => {
+    set({ initialLoading: true });
     const savedToken = localStorage.getItem('token');
-    if (!savedToken) return set({ isLoading: false });
+    if (!savedToken) return set({ initialLoading: false });
     setAuthToken(savedToken);
     try {
       const { data } = await authAPI.getMe();
-      set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false });
+      set({ user: data.user, token: data.token, isAuthenticated: true, initialLoading: false });
       socketService.connect(data.token);
     } catch {
       localStorage.removeItem('token');
-      set({ isLoading: false });
+      set({ initialLoading: false });
     }
   },
 }));

@@ -105,8 +105,8 @@ class WebRTCService {
     } catch { return false; }
 
     this.localStream.getTracks().forEach((t) => {
-      const sender = this.pc.getSenders().find((s) => s.track?.kind === t.kind && !s.track);
-      if (sender) sender.replaceTrack(t);
+      const existing = this.pc.getSenders().find((s) => s.track?.kind === t.kind);
+      if (existing) existing.replaceTrack(t);
       else this.pc.addTrack(t, this.localStream);
     });
 

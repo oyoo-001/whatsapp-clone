@@ -191,7 +191,7 @@ const AddContactModal = ({ open, onClose }) => {
                   display: 'flex', alignItems: 'center', gap: 4, color: Colors.primary, fontSize: 12, fontWeight: 600,
                 }}>
                   <MessageCircle size={14} />
-                  Chat
+                  Start Chat
                 </div>
               </div>
               <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -205,7 +205,7 @@ const AddContactModal = ({ open, onClose }) => {
                     fontWeight: 600, fontSize: 13, cursor: adding ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', gap: 6, opacity: adding ? 0.6 : 1,
                   }}>
-                    {adding ? 'Adding...' : <><UserPlus size={15} /> Save Contact</>}
+                    {adding ? 'Adding...' : <><UserPlus size={15} /> Add</>}
                   </button>
                 ) : (
                   <span style={{ color: Colors.primary, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>

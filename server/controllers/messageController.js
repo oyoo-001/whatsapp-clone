@@ -209,7 +209,7 @@ exports.markAsRead = async (req, res) => {
     const { userId } = req.params;
 
     const updated = await Message.update(
-      { isRead: true },
+      { isRead: true, isDelivered: true },
       {
         where: {
           senderId: userId,
@@ -225,12 +225,14 @@ exports.markAsRead = async (req, res) => {
         const connectedUsers = require('../socket/index').connectedUsers;
         const senderSocket = connectedUsers.get(userId);
         if (senderSocket) {
+          io.to(senderSocket).emit('chat:delivered', { messageId: null, bulk: true });
           io.to(senderSocket).emit('chat:read', {
             byUserId: req.user.id,
             messageIds: [],
           });
         }
         io.emit('conversation:update', { userId: req.user.id });
+        io.emit('conversation:update', { userId });
       }
     }
 

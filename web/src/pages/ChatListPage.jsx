@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MessageCircle, Search, Plus, MoreVertical, LogOut, User,
-  Phone, PhoneIncoming, Video, Check, CheckCheck, Settings, Lock
+  Phone, PhoneIncoming, Video, Check, CheckCheck, Settings, Lock, WifiOff
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import useChatStore from '../stores/chatStore';
@@ -29,6 +29,7 @@ const ChatListPage = () => {
   const [pinPrompt, setPinPrompt] = useState(null);
   const [pinValue, setPinValue] = useState('');
   const [pinError, setPinError] = useState('');
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const typingTimers = useRef({});
   const navigate = useNavigate();
 
@@ -41,22 +42,42 @@ const ChatListPage = () => {
   }, []);
 
   useEffect(() => {
+    const processPending = () => useChatStore.getState().processPendingMessages();
+    const unsub = socketService.onReconnect(processPending);
+    const goOnline = () => { setIsOffline(false); processPending(); };
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      unsub();
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     const u1 = socketService.on('chat:message', ({ from, message, user: sender }) => {
-      playMessageSound();
-      fetchConversations();
-      showNotification(sender?.username || 'New Message', {
-        body: message?.content || (message?.messageType === 'image' ? '📷 Photo' : message?.messageType === 'audio' ? '🎤 Voice note' : message?.messageType === 'video' ? '📹 Video' : message?.messageType === 'file' ? '📎 File' : 'Message'),
-        icon: '/pwa-icon.svg',
-        tag: 'new-message',
-        silent: true,
-      });
-      if (from && localStorage.getItem('notifPopups') !== 'false') {
-        setNotifPopup({ message, user: sender || { id: from, username: message?.sender?.username || 'User' } });
+      const { user: currentUser } = useAuthStore.getState();
+      const { updateConversationLastMessage } = useChatStore.getState();
+
+      updateConversationLastMessage(from, message, sender);
+
+      if (from !== currentUser?.id) {
+        playMessageSound();
+        showNotification(sender?.username || 'New Message', {
+          body: message?.content || (message?.messageType === 'image' ? '📷 Photo' : message?.messageType === 'audio' ? '🎤 Voice note' : message?.messageType === 'video' ? '📹 Video' : message?.messageType === 'file' ? '📎 File' : 'Message'),
+          icon: '/pwa-icon.svg',
+          tag: 'new-message',
+          silent: true,
+        });
+        if (from && localStorage.getItem('notifPopups') !== 'false') {
+          setNotifPopup({ message, user: sender || { id: from, username: message?.sender?.username || 'User' } });
+        }
       }
     });
-    const u2 = socketService.on('chat:delivered', () => { fetchConversations(); });
-    const u3 = socketService.on('chat:read', () => { fetchConversations(); });
-    const u4 = socketService.on('conversation:update', () => { fetchConversations(); });
+    const u2 = socketService.on('chat:delivered', () => { useChatStore.getState().fetchConversations(true); });
+    const u3 = socketService.on('chat:read', () => { useChatStore.getState().fetchConversations(true); });
+    const u4 = socketService.on('conversation:update', () => { useChatStore.getState().fetchConversations(true); });
     const u5 = socketService.on('chat:typing', ({ from, isTyping }) => {
       setTypingUsers((prev) => {
         const next = { ...prev, [from]: isTyping };
@@ -178,6 +199,17 @@ const ChatListPage = () => {
         </div>
       )}
 
+      {isOffline && (
+        <div style={{
+          background: '#FFF3E0', padding: '8px 16px', display: 'flex',
+          alignItems: 'center', gap: 8, fontSize: 13, color: '#E65100',
+          borderBottom: '1px solid #FFE0B2',
+        }}>
+          <WifiOff size={16} />
+          <span>You are offline — messages will be sent when connected</span>
+        </div>
+      )}
+
       <div style={{ padding: '8px 16px', background: Colors.white }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -280,7 +312,7 @@ const ChatListPage = () => {
         )}
       </div>
 
-      <button onClick={() => setShowNewChat(true)} style={fabStyle}>
+      <button onClick={() => setShowAddContact(true)} style={fabStyle}>
         <Plus size={24} />
       </button>
 
