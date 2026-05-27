@@ -61,16 +61,39 @@ const ChatPage = () => {
   const typingTimeout = useRef(null);
 
   const uid = Number(userId);
+
+  const getDayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
   const formatLastSeen = (d) => {
     if (!d) return '';
     const date = new Date(d);
-    const diff = Date.now() - date;
+    const now = new Date();
+    const diff = now - date;
+    const today = getDayStart(now);
+    const msgDay = getDayStart(date);
+    const daysDiff = Math.round((today - msgDay) / 86400000);
+
     if (diff < 60000) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (diff < 172800000) return 'yesterday';
-    return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    if (daysDiff === 0) return `today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    if (daysDiff === 1) return `yesterday at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    if (daysDiff < 7) return date.toLocaleDateString([], { weekday: 'long' }) + ` at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) + ` at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
+
+  const formatDateHeader = (d) => {
+    const date = new Date(d);
+    const now = new Date();
+    const today = getDayStart(now);
+    const msgDay = getDayStart(date);
+    const daysDiff = Math.round((today - msgDay) / 86400000);
+
+    if (daysDiff === 0) return 'Today';
+    if (daysDiff === 1) return 'Yesterday';
+    if (daysDiff < 7) return date.toLocaleDateString([], { weekday: 'long' });
+    return date.toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const sameDay = (a, b) => getDayStart(new Date(a)).getTime() === getDayStart(new Date(b)).getTime();
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
@@ -545,15 +568,28 @@ const ChatPage = () => {
                 <Info size={12} /> Messages are end-to-end encrypted
               </span>
             </div>
-            {messages.map((msg, i) => (
-              <div key={msg.id} style={{ animation: `fadeInUp 0.2s ease ${i * 0.02}s both` }}>
-                <MessageBubble message={msg} isMine={msg.senderId === currentUser.id}
-                  onLongPress={(message, pos) => { setContextMessage(message); setContextPos(pos); setShowContextMenu(true); }}
-                  isReplying={replyTo?.id === msg.id}
-                  isEditing={editMessage?.id === msg.id}
-                  onRetry={handleRetry} />
-              </div>
-            ))}
+            {messages.map((msg, i) => {
+              const showDate = i === 0 || !sameDay(msg.createdAt, messages[i - 1].createdAt);
+              return (
+                <div key={msg.id} style={{ animation: `fadeInUp 0.2s ease ${i * 0.02}s both` }}>
+                  {showDate && (
+                    <div style={{
+                      textAlign: 'center', margin: '16px 0 8px', animation: 'fadeIn 0.2s',
+                    }}>
+                      <span style={{
+                        background: '#E1F3FB', borderRadius: 8, padding: '5px 12px',
+                        fontSize: 11, color: '#1C6B8C', fontWeight: 500,
+                      }}>{formatDateHeader(msg.createdAt)}</span>
+                    </div>
+                  )}
+                  <MessageBubble message={msg} isMine={msg.senderId === currentUser.id}
+                    onLongPress={(message, pos) => { setContextMessage(message); setContextPos(pos); setShowContextMenu(true); }}
+                    isReplying={replyTo?.id === msg.id}
+                    isEditing={editMessage?.id === msg.id}
+                    onRetry={handleRetry} />
+                </div>
+              );
+            })}
           </>
         )}
         {isBlocked && (

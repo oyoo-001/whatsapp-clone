@@ -99,13 +99,36 @@ const ChatListPage = () => {
     return s;
   });
 
+  const getDayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
   const formatTime = (d) => {
     if (!d) return '';
     const date = new Date(d);
-    const diff = Date.now() - date;
-    if (diff < 86400000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (diff < 172800000) return 'Yesterday';
+    const now = new Date();
+    const today = getDayStart(now);
+    const msgDay = getDayStart(date);
+    const daysDiff = Math.round((today - msgDay) / 86400000);
+
+    if (daysDiff === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (daysDiff === 1) return 'Yesterday';
+    if (daysDiff < 7) return date.toLocaleDateString([], { weekday: 'long' });
     return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  };
+
+  const formatLastSeen = (d) => {
+    if (!d) return '';
+    const date = new Date(d);
+    const now = new Date();
+    const diff = now - date;
+    const today = getDayStart(now);
+    const msgDay = getDayStart(date);
+    const daysDiff = Math.round((today - msgDay) / 86400000);
+
+    if (diff < 60000) return 'last seen just now';
+    if (daysDiff === 0) return `last seen today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    if (daysDiff === 1) return `last seen yesterday at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    if (daysDiff < 7) return `last seen ${date.toLocaleDateString([], { weekday: 'long' })} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return `last seen ${date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
 
   const openChat = (conv) => {
@@ -130,18 +153,6 @@ const ChatListPage = () => {
     } else {
       setPinError('Wrong PIN');
     }
-  };
-
-  const formatLastSeen = (d) => {
-    if (!d) return '';
-    const date = new Date(d);
-    const now = Date.now();
-    const diff = now - date;
-    if (diff < 60000) return 'last seen just now';
-    if (diff < 3600000) return `last seen ${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `last seen ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    if (diff < 172800000) return 'last seen yesterday';
-    return `last seen ${date.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
   };
 
   return (
