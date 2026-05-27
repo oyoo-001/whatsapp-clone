@@ -35,7 +35,13 @@ exports.createGroup = async (req, res) => {
 
 exports.getMyGroups = async (req, res) => {
   try {
+    const myGroupIds = await GroupMember.findAll({
+      where: { userId: req.user.id },
+      attributes: ['groupId'],
+    });
+
     const groups = await Group.findAll({
+      where: { id: myGroupIds.map((g) => g.groupId) },
       include: [
         {
           model: User,
@@ -51,7 +57,6 @@ exports.getMyGroups = async (req, res) => {
           include: [{ model: User, as: 'sender', attributes: ['id', 'username'] }],
         },
       ],
-      through: { where: { userId: req.user.id } },
       order: [['updatedAt', 'DESC']],
     });
 

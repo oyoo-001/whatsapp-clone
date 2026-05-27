@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS Users (
   email VARCHAR(100),
   password VARCHAR(255) NOT NULL,
   avatar VARCHAR(500),
-  status VARCHAR(150) DEFAULT 'Hey there! I am using WhatsApp Clone',
+  status VARCHAR(150) DEFAULT 'Hey there! I am using TuChat',
   isOnline BOOLEAN DEFAULT false,
   lastSeen DATETIME DEFAULT CURRENT_TIMESTAMP,
   publicKey TEXT,
