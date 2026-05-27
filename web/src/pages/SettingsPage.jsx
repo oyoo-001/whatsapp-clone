@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Shield, Lock, Palette, Moon, Sun,
-  Smartphone, Download, X, Check, Bell, User, Camera, Edit3
+  Smartphone, Download, X, Check, Bell, User, Camera, Edit3, Info
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import { uploadAPI } from '../services/api';
@@ -368,6 +368,13 @@ const SettingsPage = () => {
         {installPrompt && menuItem(<Download size={18} />, 'Install App', 'Add to home screen',
           <div style={{ fontSize: 13, color: Colors.primary, fontWeight: 500 }}>Install</div>,
           handleInstall
+        )}
+
+        {sectionTitle('Info')}
+
+        {menuItem(<Info size={18} />, 'About', 'App version and details',
+          <div style={{ fontSize: 13, color: Colors.textHint }}>1.0.0</div>,
+          () => navigate('/about')
         )}
 
         {sectionTitle('Appearance')}

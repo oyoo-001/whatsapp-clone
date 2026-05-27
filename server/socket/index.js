@@ -37,6 +37,7 @@ const setupSocket = (io) => {
     console.log(`User connected: ${socket.userData.username} (${socket.id})`);
 
     connectedUsers.set(socket.userId, socket.id);
+    socket.join(`user-${socket.userId}`);
 
     await User.update(
       { isOnline: true, lastSeen: new Date() },

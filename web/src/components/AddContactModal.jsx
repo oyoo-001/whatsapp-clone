@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, X, User, Phone, UserPlus, MessageCircle, Check, AlertCircle } from 'lucide-react';
+import { Search, X, User, Phone, UserPlus, MessageCircle, Check, AlertCircle, AtSign } from 'lucide-react';
 import { usersAPI } from '../services/api';
 import { Colors } from '../styles/theme';
 
@@ -12,37 +12,54 @@ const formatPhone = (v) => {
   return digits.replace(/\D/g, '');
 };
 
+const MODES = [
+  { key: 'phone', label: 'Phone', icon: Phone },
+  { key: 'username', label: 'Username', icon: AtSign },
+];
+
 const AddContactModal = ({ open, onClose }) => {
-  const [phone, setPhone] = useState('');
-  const [result, setResult] = useState(null);
+  const [mode, setMode] = useState('phone');
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   const [error, setError] = useState('');
   const [isContact, setIsContact] = useState(false);
+  const [selectedResult, setSelectedResult] = useState(null);
   const navigate = useNavigate();
 
   const handleSearch = async () => {
-    const cleaned = formatPhone(phone);
-    if (!cleaned) return setError('Enter a phone number');
-    if (cleaned.length < 8) return setError('Number too short — include country code (e.g., +254712345678)');
+    if (!query.trim()) return setError('Enter a search term');
 
     setLoading(true);
     setSearched(true);
-    setResult(null);
+    setSelectedResult(null);
+    setResults([]);
     setAdded(false);
     setError('');
 
     try {
-      const { data } = await usersAPI.searchByPhone(cleaned);
-      if (!data.user) {
-        setResult(null);
-        setError('No account found for this number');
+      if (mode === 'phone') {
+        const cleaned = formatPhone(query);
+        if (!cleaned) return setError('Enter a phone number');
+        if (cleaned.length < 8) return setError('Number too short — include country code (e.g., +254712345678)');
+        const { data } = await usersAPI.searchByPhone(cleaned);
+        if (!data.user) {
+          setError('No account found for this number');
+        } else {
+          setSelectedResult(data.user);
+          setAdded(data.isContact || false);
+          setIsContact(data.isContact || false);
+        }
       } else {
-        setResult(data.user);
-        setAdded(data.isContact || false);
-        setIsContact(data.isContact || false);
+        const { data } = await usersAPI.search(query);
+        if (data.users.length === 0) {
+          setError('No users found');
+        } else {
+          setResults(data.users);
+        }
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Search failed. Try again.');
@@ -51,10 +68,11 @@ const AddContactModal = ({ open, onClose }) => {
   };
 
   const handleAddContact = async () => {
-    if (!result) return;
+    const target = selectedResult;
+    if (!target) return;
     setAdding(true);
     try {
-      await usersAPI.addContact({ contactUserId: result.id });
+      await usersAPI.addContact({ contactUserId: target.id });
       setAdded(true);
       setIsContact(true);
     } catch (err) {
@@ -63,22 +81,23 @@ const AddContactModal = ({ open, onClose }) => {
     setAdding(false);
   };
 
-  const startChat = () => {
-    if (!result) return;
+  const startChat = (user) => {
     onClose();
-    setPhone('');
-    setResult(null);
+    setQuery('');
+    setSelectedResult(null);
+    setResults([]);
     setSearched(false);
     setAdded(false);
     setError('');
-    navigate(`/chat/${result.id}`, { state: { user: result } });
+    navigate(`/chat/${user.id}`, { state: { user } });
   };
 
   const handleClose = () => {
     onClose();
     setTimeout(() => {
-      setPhone('');
-      setResult(null);
+      setQuery('');
+      setSelectedResult(null);
+      setResults([]);
       setSearched(false);
       setAdded(false);
       setError('');
@@ -86,6 +105,8 @@ const AddContactModal = ({ open, onClose }) => {
   };
 
   if (!open) return null;
+
+  const getHue = (id) => (id * 60) % 360;
 
   return (
     <div style={{
@@ -99,7 +120,7 @@ const AddContactModal = ({ open, onClose }) => {
         animation: 'slideUp 0.3s ease',
       }} onClick={(e) => e.stopPropagation()}>
         <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16,
         }}>
           <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: Colors.textPrimary }}>Add Contact</h3>
           <button onClick={handleClose}
@@ -108,22 +129,40 @@ const AddContactModal = ({ open, onClose }) => {
           </button>
         </div>
 
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {MODES.map(({ key, label, icon: Icon }) => (
+            <button key={key} onClick={() => { setMode(key); setQuery(''); setError(''); setSearched(false); setSelectedResult(null); setResults([]); }} style={{
+              flex: 1, padding: '8px 12px', borderRadius: 10, border: 'none',
+              background: mode === key ? Colors.primary : '#F0F2F5',
+              color: mode === key ? Colors.white : Colors.textPrimary,
+              fontWeight: 600, fontSize: 13, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+              <Icon size={16} /> {label}
+            </button>
+          ))}
+        </div>
+
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, background: Colors.lighterGrey,
           borderRadius: 14, padding: '6px 6px 6px 16',
           border: `2px solid ${error ? '#FECACA' : 'transparent'}`,
           transition: 'border-color 0.2s',
         }}>
-          <Phone size={18} color={Colors.textHint} style={{ flexShrink: 0 }} />
-          <input value={phone} onChange={(e) => { setPhone(e.target.value); setError(''); }}
+          {mode === 'phone' ? (
+            <Phone size={18} color={Colors.textHint} style={{ flexShrink: 0 }} />
+          ) : (
+            <Search size={18} color={Colors.textHint} style={{ flexShrink: 0 }} />
+          )}
+          <input value={query} onChange={(e) => { setQuery(e.target.value); setError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            placeholder="Phone number with country code"
+            placeholder={mode === 'phone' ? 'Phone number with country code' : 'Search by username'}
             style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 14, color: Colors.textPrimary, outline: 'none' }} autoFocus />
-          <button onClick={handleSearch} disabled={loading || !phone.trim()} style={{
+          <button onClick={handleSearch} disabled={loading || !query.trim()} style={{
             background: Colors.primary, border: 'none', borderRadius: 10,
             padding: '10px 18px', color: Colors.white, fontWeight: 600, fontSize: 13,
-            cursor: loading || !phone.trim() ? 'default' : 'pointer',
-            opacity: loading || !phone.trim() ? 0.6 : 1,
+            cursor: loading || !query.trim() ? 'default' : 'pointer',
+            opacity: loading || !query.trim() ? 0.6 : 1,
             display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
           }}>
             <Search size={15} />
@@ -131,12 +170,14 @@ const AddContactModal = ({ open, onClose }) => {
           </button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 120, marginTop: 4 }}>
+        {mode === 'phone' && !searched && (
           <p style={{ fontSize: 12, color: '#B0BEC5', margin: '8px 0 0', paddingLeft: 4 }}>
             Enter the full number with country code (e.g., +254712345678)
           </p>
+        )}
 
-          {error && !result && !loading && (
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 120, marginTop: 4 }}>
+          {error && !loading && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, marginTop: 16,
               padding: '12px 14px', background: '#FEF2F2', borderRadius: 12,
@@ -157,7 +198,39 @@ const AddContactModal = ({ open, onClose }) => {
             </div>
           )}
 
-          {!loading && searched && !result && !error && (
+          {!loading && mode === 'username' && results.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              {results.map((u, i) => (
+                <div key={u.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 14, padding: '12px 0',
+                  cursor: 'pointer', borderBottom: '0.5px solid #F0F2F5',
+                  animation: `fadeInUp 0.2s ease ${i * 0.04}s both`,
+                }} onClick={() => startChat(u)}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    background: `hsl(${getHue(u.id)}, 45%, 45%)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: Colors.white, fontWeight: 700, fontSize: 16, flexShrink: 0,
+                  }}>{u.username?.charAt(0).toUpperCase() || '?'}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, fontSize: 15, color: Colors.textPrimary }}>{u.username}</div>
+                    <div style={{ fontSize: 12, color: Colors.textSecondary }}>{u.phoneNumber}</div>
+                  </div>
+                  <MessageCircle size={18} color={Colors.primary} style={{ flexShrink: 0 }} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && mode === 'username' && searched && results.length === 0 && !error && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: Colors.textSecondary }}>
+              <User size={48} color="#E9EDEF" style={{ marginBottom: 12 }} />
+              <p style={{ fontSize: 14, fontWeight: 500, color: Colors.textPrimary }}>No users found</p>
+              <p style={{ fontSize: 13, marginTop: 4 }}>Try a different username</p>
+            </div>
+          )}
+
+          {!loading && mode === 'phone' && searched && !selectedResult && !error && (
             <div style={{ textAlign: 'center', padding: '40px 0', color: Colors.textSecondary }}>
               <User size={48} color="#E9EDEF" style={{ marginBottom: 12 }} />
               <p style={{ fontSize: 14, fontWeight: 500, color: Colors.textPrimary }}>User not found</p>
@@ -165,26 +238,26 @@ const AddContactModal = ({ open, onClose }) => {
             </div>
           )}
 
-          {!loading && result && (
+          {!loading && mode === 'phone' && selectedResult && (
             <div style={{
               marginTop: 16, borderRadius: 16, overflow: 'hidden',
               border: '1px solid #E8ECF0',
               animation: 'fadeInUp 0.25s ease',
             }}>
-              <div onClick={startChat} style={{
+              <div onClick={() => startChat(selectedResult)} style={{
                 display: 'flex', alignItems: 'center', gap: 14, padding: '16px 16px',
                 cursor: 'pointer', background: '#FAFBFC',
                 borderBottom: '1px solid #E8ECF0',
               }}>
                 <div style={{
                   width: 50, height: 50, borderRadius: '50%',
-                  background: `hsl(${result.id * 60 % 360}, 45%, 45%)`,
+                  background: `hsl(${getHue(selectedResult.id)}, 45%, 45%)`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: Colors.white, fontWeight: 700, fontSize: 18, flexShrink: 0,
-                }}>{result.username?.charAt(0).toUpperCase() || '?'}</div>
+                }}>{selectedResult.username?.charAt(0).toUpperCase() || '?'}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 15, color: Colors.textPrimary }}>{result.username}</div>
-                  <div style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{result.phoneNumber}</div>
+                  <div style={{ fontWeight: 600, fontSize: 15, color: Colors.textPrimary }}>{selectedResult.username}</div>
+                  <div style={{ fontSize: 13, color: Colors.textSecondary, marginTop: 2 }}>{selectedResult.phoneNumber}</div>
                 </div>
                 <div style={{
                   background: '#E8F5E9', borderRadius: 20, padding: '6px 12px',

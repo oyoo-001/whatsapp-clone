@@ -74,3 +74,44 @@ CREATE TABLE IF NOT EXISTS Contacts (
   FOREIGN KEY (contactUserId) REFERENCES Users(id) ON DELETE CASCADE,
   UNIQUE INDEX idx_user_contact (userId, contactUserId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `Groups` (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  avatar VARCHAR(500),
+  description TEXT,
+  createdBy INT NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (createdBy) REFERENCES Users(id) ON DELETE CASCADE,
+  INDEX idx_created_by (createdBy)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS GroupMembers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  groupId INT NOT NULL,
+  userId INT NOT NULL,
+  role ENUM('admin', 'member') DEFAULT 'member',
+  unreadCount INT DEFAULT 0,
+  joinedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (groupId) REFERENCES `Groups`(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES Users(id) ON DELETE CASCADE,
+  UNIQUE INDEX idx_group_user (groupId, userId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS GroupMessages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  groupId INT NOT NULL,
+  senderId INT NOT NULL,
+  content TEXT,
+  messageType ENUM('text', 'image', 'video', 'audio', 'file') DEFAULT 'text',
+  fileUrl VARCHAR(500),
+  replyToId INT,
+  replyToContent TEXT,
+  replyToSenderId INT,
+  replyToSenderName VARCHAR(50),
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (groupId) REFERENCES `Groups`(id) ON DELETE CASCADE,
+  FOREIGN KEY (senderId) REFERENCES Users(id) ON DELETE CASCADE,
+  INDEX idx_group_messages (groupId, createdAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

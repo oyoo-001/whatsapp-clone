@@ -1,3 +1,4 @@
+const { GroupMember } = require('../models');
 const connectedUsers = new Map();
 const meetingRooms = new Map();
 const activeCallUsers = new Map(); // userId -> { peerId, callType, callLogId }
@@ -266,6 +267,52 @@ const webrtcHandlers = (io, socket) => {
         from: userId,
         isTyping,
       });
+    }
+  });
+
+  socket.on('chat:group-typing', async ({ groupId, isTyping }) => {
+    try {
+      const members = await GroupMember.findAll({ where: { groupId } });
+      members.forEach((m) => {
+        if (m.userId !== userId) {
+          io.to(`user-${m.userId}`).emit('chat:group-typing', {
+            groupId,
+            from: userId,
+            isTyping,
+            user: socket.userData,
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Group typing relay error:', err);
+    }
+  });
+
+  socket.on('call:group-started', async ({ groupId, callType }) => {
+    try {
+      const members = await GroupMember.findAll({ where: { groupId } });
+      members.forEach((m) => {
+        if (m.userId !== userId) {
+          io.to(`user-${m.userId}`).emit('call:group-started', {
+            groupId, callType, caller: socket.userData,
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Group call relay error:', err);
+    }
+  });
+
+  socket.on('call:group-ended', async ({ groupId }) => {
+    try {
+      const members = await GroupMember.findAll({ where: { groupId } });
+      members.forEach((m) => {
+        if (m.userId !== userId) {
+          io.to(`user-${m.userId}`).emit('call:group-ended', { groupId });
+        }
+      });
+    } catch (err) {
+      console.error('Group call end relay error:', err);
     }
   });
 

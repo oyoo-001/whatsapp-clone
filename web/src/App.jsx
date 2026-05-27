@@ -16,6 +16,8 @@ import CallPage from './pages/CallPage';
 import CallLogsPage from './pages/CallLogsPage';
 import GroupCallPage from './pages/GroupCallPage';
 import SettingsPage from './pages/SettingsPage';
+import AboutPage from './pages/AboutPage';
+import GroupChatPage from './pages/GroupChatPage';
 import LoadingPage from './pages/LoadingPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import './styles/global.css';
@@ -64,6 +66,8 @@ const App = () => {
             <Route path="/call-logs" element={<ProtectedRoute><CallLogsPage /></ProtectedRoute>} />
             <Route path="/meeting/:meetingId" element={<ProtectedRoute><GroupCallPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
+            <Route path="/group-chat/:groupId" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

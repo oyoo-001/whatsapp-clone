@@ -61,6 +61,9 @@ const EmojiPicker = ({ open, onSelect, onClose }) => {
   const [gifQuery, setGifQuery] = useState('');
   const [gifs, setGifs] = useState([]);
   const [gifLoading, setGifLoading] = useState(false);
+  const [stickerQuery, setStickerQuery] = useState('');
+  const [stickers, setStickers] = useState([]);
+  const [stickerLoading, setStickerLoading] = useState(false);
 
   const searchGifs = useCallback(async (q) => {
     setGifQuery(q);
@@ -72,6 +75,18 @@ const EmojiPicker = ({ open, onSelect, onClose }) => {
       setGifs(data.data || []);
     } catch { setGifs([]); }
     setGifLoading(false);
+  }, []);
+
+  const searchStickers = useCallback(async (q) => {
+    setStickerQuery(q);
+    if (!q.trim()) { setStickers([]); return; }
+    setStickerLoading(true);
+    try {
+      const res = await fetch(`https://api.giphy.com/v1/stickers/search?api_key=0UTRbFtkMxAplrohufYb5LhKWoosNH2d&q=${encodeURIComponent(q)}&limit=25&rating=g`);
+      const data = await res.json();
+      setStickers(data.data || []);
+    } catch { setStickers([]); }
+    setStickerLoading(false);
   }, []);
 
   if (!open) return null;
@@ -87,6 +102,7 @@ const EmojiPicker = ({ open, onSelect, onClose }) => {
       <div style={{ display: 'flex', borderBottom: '1px solid #E8ECF0' }}>
         <button onClick={() => setTab('emoji')} style={{ ...tabBtn, borderBottom: tab === 'emoji' ? `2.5px solid ${Colors.primary}` : '2.5px solid transparent', color: tab === 'emoji' ? Colors.primary : Colors.textHint }}>Emoji</button>
         <button onClick={() => { setTab('gif'); searchGifs('funny'); }} style={{ ...tabBtn, borderBottom: tab === 'gif' ? `2.5px solid ${Colors.primary}` : '2.5px solid transparent', color: tab === 'gif' ? Colors.primary : Colors.textHint }}>GIF</button>
+        <button onClick={() => { setTab('sticker'); searchStickers('funny'); }} style={{ ...tabBtn, borderBottom: tab === 'sticker' ? `2.5px solid ${Colors.primary}` : '2.5px solid transparent', color: tab === 'sticker' ? Colors.primary : Colors.textHint }}>Stickers</button>
       </div>
 
       {tab === 'emoji' ? (
@@ -101,7 +117,7 @@ const EmojiPicker = ({ open, onSelect, onClose }) => {
             ))}
           </div>
         </div>
-      ) : (
+      ) : tab === 'gif' ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, background: '#F5F7FA', borderRadius: 10, margin: '8px 12px' }}>
             <Search size={16} color={Colors.textHint} />
@@ -136,6 +152,48 @@ const EmojiPicker = ({ open, onSelect, onClose }) => {
                     borderRadius: 8, overflow: 'hidden',
                   }}>
                     <img src={g.images?.fixed_height?.url} alt={g.title}
+                      style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, background: '#F5F7FA', borderRadius: 10, margin: '8px 12px' }}>
+            <Search size={16} color={Colors.textHint} />
+            <input value={stickerQuery} onChange={(e) => searchStickers(e.target.value)}
+              placeholder="Search Stickers..."
+              style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, outline: 'none' }} />
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px' }}>
+            {stickerLoading ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {[1,2,3,4,5,6].map((i) => (
+                  <div key={i} style={{ width: '48%', height: 100, background: '#F0F2F5', borderRadius: 8, animation: 'pulse 1.5s ease infinite' }} />
+                ))}
+              </div>
+            ) : !stickerQuery ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {GIF_KEYWORDS.slice(0, 8).map((k, i) => (
+                  <button key={i} onClick={() => searchStickers(k)} style={{
+                    padding: '8px 14px', borderRadius: 20, background: '#F0F2F5',
+                    border: 'none', cursor: 'pointer', fontSize: 13, color: Colors.textPrimary,
+                    textTransform: 'capitalize',
+                  }}>{k}</button>
+                ))}
+              </div>
+            ) : stickers.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: Colors.textSecondary, fontSize: 13 }}>No stickers found</div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {stickers.map((s) => (
+                  <button key={s.id} onClick={() => onSelect(s.images?.fixed_height?.url || s.images?.original?.url, 'gif')} style={{
+                    width: '49%', border: 'none', padding: 0, cursor: 'pointer',
+                    borderRadius: 8, overflow: 'hidden',
+                  }}>
+                    <img src={s.images?.fixed_height?.url} alt={s.title}
                       style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
                   </button>
                 ))}

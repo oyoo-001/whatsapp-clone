@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, MessageCircle } from 'lucide-react';
+import { X, MessageCircle, Phone } from 'lucide-react';
 import { Colors } from '../styles/theme';
 
-const NotificationPopup = ({ message, user, onDismiss, onClick }) => {
+const NotificationPopup = ({ message, user, onDismiss, onClick, isCall }) => {
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
@@ -39,7 +39,9 @@ const NotificationPopup = ({ message, user, onDismiss, onClick }) => {
           {user?.avatar ? <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : user?.username?.charAt(0).toUpperCase() || <MessageCircle size={16} />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: Colors.white, fontWeight: 600, fontSize: 13 }}>{user?.username || 'New message'}</div>
+          <div style={{ color: Colors.white, fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {isCall && <Phone size={12} />} {user?.username || 'New message'}
+          </div>
           <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {message?.content || (message?.messageType !== 'text' ? `📎 ${message.messageType}` : '')}
           </div>

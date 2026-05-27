@@ -59,6 +59,22 @@ export const callsAPI = {
   joinMeeting: (callId) => api.post(`/calls/${callId}/join`),
 };
 
+export const groupsAPI = {
+  createGroup: (data) => api.post('/groups', data),
+  getMyGroups: () => api.get('/groups'),
+  getGroup: (groupId) => api.get(`/groups/${groupId}`),
+  updateGroup: (groupId, data) => api.put(`/groups/${groupId}`, data),
+  updateAvatar: (groupId, data) => api.put(`/groups/${groupId}/avatar`, data),
+  addMembers: (groupId, data) => api.post(`/groups/${groupId}/members`, data),
+  addMember: (groupId, data) => api.post(`/groups/${groupId}/members/add`, data),
+  removeMember: (groupId, data) => api.delete(`/groups/${groupId}/members`, { data }),
+  updateMemberRole: (groupId, userId) => api.put(`/groups/${groupId}/members/${userId}/role`),
+  sendMessage: (groupId, data) => api.post(`/groups/${groupId}/messages`, data),
+  getMessages: (groupId, params) => api.get(`/groups/${groupId}/messages`, { params }),
+  deleteMessage: (groupId, data) => api.delete(`/groups/${groupId}/messages`, { data }),
+  markAsRead: (groupId) => api.put(`/groups/${groupId}/read`),
+};
+
 export const uploadAPI = {
   upload: (file, onProgress) => {
     const formData = new FormData();

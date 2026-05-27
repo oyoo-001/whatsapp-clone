@@ -2,15 +2,17 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MessageCircle, Search, Plus, MoreVertical, LogOut, User,
-  Phone, PhoneIncoming, Video, Check, CheckCheck, Settings, Lock, WifiOff
+  Phone, PhoneIncoming, Video, Check, CheckCheck, Settings, Lock, WifiOff, Users
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import useChatStore from '../stores/chatStore';
+import useGroupStore from '../stores/groupStore';
 import socketService from '../services/socket';
 import { playMessageSound } from '../services/notificationSound';
 import { updateBadge, clearBadge, showNotification, requestNotificationPermission } from '../services/notificationUtils';
 import NewChatModal from '../components/NewChatModal';
 import AddContactModal from '../components/AddContactModal';
+import CreateGroupModal from '../components/CreateGroupModal';
 import { Colors } from '../styles/theme';
 import NotificationPopup from '../components/NotificationPopup';
 
@@ -23,6 +25,8 @@ const ChatListPage = () => {
   const [activeTab, setActiveTab] = useState('All');
   const [showNewChat, setShowNewChat] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showFabMenu, setShowFabMenu] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [typingUsers, setTypingUsers] = useState({});
   const [notifPopup, setNotifPopup] = useState(null);
@@ -33,12 +37,10 @@ const ChatListPage = () => {
   const typingTimers = useRef({});
   const navigate = useNavigate();
 
-  const totalUnread = useMemo(() => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [conversations]);
-  useEffect(() => { if (totalUnread > 0) updateBadge(totalUnread); else clearBadge(); }, [totalUnread]);
-
   useEffect(() => {
     requestNotificationPermission();
     fetchConversations();
+    fetchGroups();
   }, []);
 
   useEffect(() => {
@@ -90,10 +92,64 @@ const ChatListPage = () => {
         }, 3000);
       }
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = socketService.on('group:message', ({ groupId, message }) => {
+      useGroupStore.getState().receiveMessage(groupId, message);
+      const { user: cu } = useAuthStore.getState();
+      if (String(message.senderId) !== String(cu?.id) && localStorage.getItem('notifPopups') !== 'false') {
+        const group = useGroupStore.getState().groups.find((g) => String(g.id) === String(groupId));
+        setNotifPopup({
+          message,
+          user: message.sender || { id: message.senderId, username: message.senderName || (group ? `Group: ${group.name}` : 'Group') },
+        });
+      }
+    });
+    const u7 = socketService.on('call:group-started', ({ groupId, callType, caller }) => {
+      const { user: cu } = useAuthStore.getState();
+      if (caller?.id && String(caller.id) !== String(cu?.id) && localStorage.getItem('notifPopups') !== 'false') {
+        const group = useGroupStore.getState().groups.find((g) => String(g.id) === String(groupId));
+        setNotifPopup({
+          message: { content: `${caller.username || 'Someone'} started a ${callType} call` },
+          user: { id: groupId, username: group?.name || 'Group Call' },
+          isCall: true,
+          groupId,
+          callType,
+        });
+      }
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
-  const filtered = conversations.filter((c) => {
+  const { user: currentUser } = useAuthStore();
+  const { groups, getSortedGroups, fetchGroups } = useGroupStore();
+  const sortedGroups = getSortedGroups();
+
+  const totalUnread = useMemo(() => {
+    const convUnread = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    const groupUnread = sortedGroups.reduce((sum, g) => {
+      const m = g.participants?.find((p) => String(p.id) === String(currentUser?.id));
+      return sum + (m?.GroupMember?.unreadCount || 0);
+    }, 0);
+    return convUnread + groupUnread;
+  }, [conversations, sortedGroups, currentUser]);
+  useEffect(() => { if (totalUnread > 0) updateBadge(totalUnread); else clearBadge(); }, [totalUnread]);
+
+  const allItems = useMemo(() => {
+    const convItems = conversations.map((c) => ({ ...c, _type: 'conversation' }));
+    const groupItems = sortedGroups.map((g) => ({ _type: 'group', group: g }));
+    return [...convItems, ...groupItems].sort((a, b) => {
+      const aTime = a._type === 'group' ? new Date(a.group.updatedAt || a.group.createdAt) : new Date(a.lastMessage?.createdAt || a.user.lastSeen || 0);
+      const bTime = b._type === 'group' ? new Date(b.group.updatedAt || b.group.createdAt) : new Date(b.lastMessage?.createdAt || b.user.lastSeen || 0);
+      return bTime - aTime;
+    });
+  }, [conversations, sortedGroups]);
+
+  const filtered = allItems.filter((item) => {
+    if (item._type === 'group') {
+      const s = item.group.name.toLowerCase().includes(search.toLowerCase());
+      if (activeTab === 'Unread') return false;
+      return s;
+    }
+    const c = item;
     const s = c.user.username.toLowerCase().includes(search.toLowerCase());
     if (activeTab === 'Unread') return s && c.unreadCount > 0;
     return s;
@@ -260,75 +316,175 @@ const ChatListPage = () => {
               </div>
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 && conversations.length === 0 && sortedGroups.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '80px 20px', color: Colors.textSecondary }}>
             <MessageCircle size={56} color="#E9EDEF" style={{ marginBottom: 16 }} />
             <p style={{ fontSize: 16, fontWeight: 500, color: Colors.textPrimary }}>No conversations yet</p>
             <p style={{ fontSize: 13, marginTop: 6 }}>Tap + to start a new chat</p>
           </div>
-        ) : (
-          filtered.map((conv, i) => (
-            <div key={conv.user.id}
-              onClick={() => openChat(conv)}
-              style={{
-                display: 'flex', alignItems: 'center', padding: '12px 16px', cursor: 'pointer',
-                borderBottom: '0.5px solid #F0F2F5', animation: `fadeInUp 0.3s ease ${i * 0.03}s both`,
-              }}>
-              <div style={{
-                width: 50, height: 50, borderRadius: '50%',
-                background: conv.user.avatar ? 'none' : `hsl(${conv.user.id * 40 % 360}, 45%, 45%)`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: Colors.white, fontWeight: 700, fontSize: 20, position: 'relative', flexShrink: 0,
-                overflow: 'hidden',
-              }}>
-                {conv.user.avatar ? (
-                  <img src={conv.user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : conv.user.username.charAt(0).toUpperCase()}
-                {conv.user.isOnline && <span style={onlineDotStyle} />}
-              </div>
-              <div style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 500, fontSize: 16, color: Colors.textPrimary }}>{conv.user.username}</span>
-                  <span style={{ fontSize: 11, color: Colors.textSecondary, flexShrink: 0 }}>
-                    {formatTime(conv.lastMessage?.createdAt)}
-                  </span>
-                </div>
-                {!conv.user.isOnline && conv.user.lastSeen && !typingUsers[conv.user.id] && (
-                  <div style={{ fontSize: 11, color: Colors.textHint, marginTop: 1 }}>{formatLastSeen(conv.user.lastSeen)}</div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-                  <span style={{
-                    fontSize: 13, color: Colors.textSecondary, overflow: 'hidden',
-                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+          ) : filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: Colors.textSecondary }}>
+            <Search size={40} color="#E9EDEF" style={{ marginBottom: 12 }} />
+            <p style={{ fontSize: 14 }}>No results found</p>
+          </div>
+          ) : (
+            filtered.map((item, i) => {
+              if (item._type === 'group') {
+                const grp = item.group;
+                return (
+                  <div key={grp.id}
+                    onClick={() => navigate(`/group-chat/${grp.id}`, { state: { group: grp } })}
+                    style={{
+                      display: 'flex', alignItems: 'center', padding: '12px 16px', cursor: 'pointer',
+                      borderBottom: '0.5px solid #F0F2F5', animation: `fadeInUp 0.3s ease ${i * 0.03}s both`,
+                    }}>
+                    <div style={{
+                      width: 50, height: 50, borderRadius: 14,
+                      background: grp.avatar ? 'none' : `hsl(${grp.name.length * 30 % 360}, 40%, 50%)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: Colors.white, fontWeight: 700, fontSize: 20, flexShrink: 0,
+                      overflow: 'hidden',
+                    }}>
+                      {grp.avatar ? (
+                        <img src={grp.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : grp.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 500, fontSize: 16, color: Colors.textPrimary }}>{grp.name}</span>
+                        <span style={{ fontSize: 11, color: Colors.textSecondary, flexShrink: 0 }}>
+                          {formatTime(grp.updatedAt || grp.createdAt)}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                        <span style={{ fontSize: 13, color: Colors.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          {grp.messages?.[0]
+                            ? `${grp.messages[0].sender?.username || 'User'}: ${grp.messages[0].messageType === 'text' ? grp.messages[0].content : `📎 ${grp.messages[0].messageType}`}`
+                            : <span style={{ color: Colors.textHint }}>No messages yet</span>}
+                        </span>
+                        {(() => {
+                          const myMembership = grp.participants?.find((p) => String(p.id) === String(currentUser?.id));
+                          const uc = myMembership?.GroupMember?.unreadCount;
+                          return uc > 0 ? (
+                            <span style={unreadBadgeStyle}>{uc > 99 ? '99+' : uc}</span>
+                          ) : null;
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                  );
+                }
+              const conv = item;
+              return (
+                <div key={conv.user.id}
+                  onClick={() => openChat(conv)}
+                  style={{
+                    display: 'flex', alignItems: 'center', padding: '12px 16px', cursor: 'pointer',
+                    borderBottom: '0.5px solid #F0F2F5', animation: `fadeInUp 0.3s ease ${i * 0.03}s both`,
                   }}>
-                    {typingUsers[conv.user.id] ? (
-                      <span style={{ color: Colors.accent, fontWeight: 500 }}>typing...</span>
-                    ) : conv.lastMessage?.messageType === 'text'
-                      ? conv.lastMessage.content
-                      : conv.lastMessage ? `📎 ${conv.lastMessage.messageType}` : <span style={{ color: Colors.textHint }}>{conv.user.status || 'Hey there! I am using WhatsApp Clone'}</span>}
-                  </span>
-                  {conv.unreadCount > 0 ? (
-                    <span style={unreadBadgeStyle}>{conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>
-                  ) : conv.lastMessage?.senderId === conv.user.id ? null : conv.lastMessage?.isRead ? (
-                    <CheckCheck size={14} color={Colors.accent} style={{ marginLeft: 8, flexShrink: 0 }} />
-                  ) : conv.lastMessage?.isDelivered ? (
-                    <CheckCheck size={14} color={Colors.textHint} style={{ marginLeft: 8, flexShrink: 0 }} />
-                  ) : conv.lastMessage ? (
-                    <Check size={14} color={Colors.textHint} style={{ marginLeft: 8, flexShrink: 0 }} />
-                  ) : null}
+                  <div style={{
+                    width: 50, height: 50, borderRadius: '50%',
+                    background: conv.user.avatar ? 'none' : `hsl(${conv.user.id * 40 % 360}, 45%, 45%)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: Colors.white, fontWeight: 700, fontSize: 20, position: 'relative', flexShrink: 0,
+                    overflow: 'hidden',
+                  }}>
+                    {conv.user.avatar ? (
+                      <img src={conv.user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : conv.user.username.charAt(0).toUpperCase()}
+                    {conv.user.isOnline && <span style={onlineDotStyle} />}
+                  </div>
+                  <div style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 500, fontSize: 16, color: Colors.textPrimary }}>{conv.user.username}</span>
+                      <span style={{ fontSize: 11, color: Colors.textSecondary, flexShrink: 0 }}>
+                        {formatTime(conv.lastMessage?.createdAt)}
+                      </span>
+                    </div>
+                    {!conv.user.isOnline && conv.user.lastSeen && !typingUsers[conv.user.id] && (
+                      <div style={{ fontSize: 11, color: Colors.textHint, marginTop: 1 }}>{formatLastSeen(conv.user.lastSeen)}</div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                      <span style={{
+                        fontSize: 13, color: Colors.textSecondary, overflow: 'hidden',
+                        textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                      }}>
+                        {typingUsers[conv.user.id] ? (
+                          <span style={{ color: Colors.accent, fontWeight: 500 }}>typing...</span>
+                        ) : conv.lastMessage?.messageType === 'text'
+                          ? conv.lastMessage.content
+                          : conv.lastMessage ? `📎 ${conv.lastMessage.messageType}` : <span style={{ color: Colors.textHint }}>{conv.user.status || 'Hey there! I am using WhatsApp Clone'}</span>}
+                      </span>
+                      {conv.unreadCount > 0 ? (
+                        <span style={unreadBadgeStyle}>{conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>
+                      ) : conv.lastMessage?.senderId === conv.user.id ? null : conv.lastMessage?.isRead ? (
+                        <CheckCheck size={14} color={Colors.accent} style={{ marginLeft: 8, flexShrink: 0 }} />
+                      ) : conv.lastMessage?.isDelivered ? (
+                        <CheckCheck size={14} color={Colors.textHint} style={{ marginLeft: 8, flexShrink: 0 }} />
+                      ) : conv.lastMessage ? (
+                        <Check size={14} color={Colors.textHint} style={{ marginLeft: 8, flexShrink: 0 }} />
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))
-        )}
+              );
+            })
+          )}
       </div>
 
-      <button onClick={() => setShowAddContact(true)} style={fabStyle}>
-        <Plus size={24} />
+      {showFabMenu && (
+        <div style={{
+          position: 'absolute', bottom: 90, right: 20, zIndex: 20,
+          display: 'flex', flexDirection: 'column', gap: 8,
+          animation: 'fadeInUp 0.15s ease',
+        }}>
+          <button onClick={() => { setShowCreateGroup(true); setShowFabMenu(false); }} style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: Colors.white, border: 'none', borderRadius: 12,
+            padding: '12px 16px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+            fontSize: 14, fontWeight: 500, color: Colors.textPrimary,
+            animation: 'fadeInUp 0.15s ease',
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%', background: '#E8F5E9',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: Colors.primary,
+            }}><Users size={18} /></div>
+            New Group
+          </button>
+          <button onClick={() => { setShowNewChat(true); setShowFabMenu(false); }} style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: Colors.white, border: 'none', borderRadius: 12,
+            padding: '12px 16px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+            fontSize: 14, fontWeight: 500, color: Colors.textPrimary,
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%', background: '#E3F2FD',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1565C0',
+            }}><MessageCircle size={18} /></div>
+            New Chat
+          </button>
+          <button onClick={() => { setShowAddContact(true); setShowFabMenu(false); }} style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: Colors.white, border: 'none', borderRadius: 12,
+            padding: '12px 16px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+            fontSize: 14, fontWeight: 500, color: Colors.textPrimary,
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%', background: '#FFF3E0',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#E65100',
+            }}><User size={18} /></div>
+            Add Contact
+          </button>
+        </div>
+      )}
+
+      <button onClick={() => setShowFabMenu(!showFabMenu)} style={fabStyle}>
+        <Plus size={24} style={{ transform: showFabMenu ? 'rotate(45deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
       </button>
 
       <NewChatModal open={showNewChat} onClose={() => setShowNewChat(false)} />
       <AddContactModal open={showAddContact} onClose={() => setShowAddContact(false)} />
+      <CreateGroupModal open={showCreateGroup} onClose={() => setShowCreateGroup(false)} />
 
       {pinPrompt && (
         <div onClick={() => setPinPrompt(null)} style={{
@@ -373,11 +529,20 @@ const ChatListPage = () => {
         <NotificationPopup
           message={notifPopup.message}
           user={notifPopup.user}
+          isCall={notifPopup.isCall}
           onDismiss={() => setNotifPopup(null)}
           onClick={() => {
             const targetId = notifPopup.user.id;
             setNotifPopup(null);
-            navigate(`/chat/${targetId}`, { state: { user: notifPopup.user } });
+            if (notifPopup.isCall) {
+              navigate(`/meeting/${notifPopup.groupId}`, {
+                state: { name: notifPopup.user.username || 'Group', callType: notifPopup.callType },
+              });
+            } else if (notifPopup.groupId) {
+              navigate(`/group-chat/${notifPopup.groupId}`);
+            } else {
+              navigate(`/chat/${targetId}`, { state: { user: notifPopup.user } });
+            }
           }}
         />
       )}

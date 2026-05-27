@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Users } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Users, Phone } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import socketService from '../services/socket';
 import webrtcService from '../services/webrtc';
@@ -12,10 +12,11 @@ const GroupCallPage = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuthStore();
   const meetingName = state?.name || 'Group Meeting';
+  const callType = state?.callType || 'video';
   const uid = currentUser?.id;
 
   const [participants, setParticipants] = useState([]);
-  const [isVideo, setIsVideo] = useState(true);
+  const [isVideo, setIsVideo] = useState(callType === 'video');
   const [isMuted, setIsMuted] = useState(false);
   const [duration, setDuration] = useState(0);
   const localRef = useRef(null);
@@ -53,6 +54,7 @@ const GroupCallPage = () => {
 
   const leaveCall = () => {
     socketService.emit('meeting:leave', { meetingId });
+    socketService.emit('call:group-ended', { groupId: meetingId.replace(/^group-/, '') });
     webrtcService.cleanup();
     navigate('/');
   };
@@ -74,7 +76,10 @@ const GroupCallPage = () => {
         </button>
         <div style={{ textAlign: 'center' }}>
           <div style={{ color: Colors.white, fontWeight: 600, fontSize: 15 }}>{meetingName}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{fmt(duration)}</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            {callType === 'voice' ? <Phone size={12} /> : <Video size={12} />}
+            {callType === 'voice' ? 'Voice' : 'Video'} &middot; {fmt(duration)}
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
           <Users size={14} /> {participants.length + 1}

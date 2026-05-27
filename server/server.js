@@ -14,6 +14,7 @@ const userRoutes = require('./routes/users');
 const messageRoutes = require('./routes/messages');
 const callRoutes = require('./routes/calls');
 const uploadRoutes = require('./routes/upload');
+const groupRoutes = require('./routes/groups');
 
 const app = express();
 const server = http.createServer(app);
@@ -53,6 +54,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/groups', groupRoutes);
 
 app.get('/', (req, res) => {
   res.json({
