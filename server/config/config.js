@@ -1,15 +1,25 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
+const TURN_URL = process.env.TURN_URL;
+const TURN_USERNAME = process.env.TURN_USERNAME;
+const TURN_CREDENTIAL = process.env.TURN_CREDENTIAL;
+const hasTurn = TURN_URL && TURN_URL !== 'turn:your-turn-server.com:3478' && TURN_CREDENTIAL && TURN_CREDENTIAL !== 'credential';
+
 module.exports = {
   port: process.env.PORT || 5000,
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   jwtSecret: process.env.JWT_SECRET || 'fallback_secret',
   jwtExpiry: '7d',
   bcryptSaltRounds: 10,
-  turnServer: {
-    urls: process.env.TURN_URL || 'turn:your-turn-server.com:3478',
-    username: process.env.TURN_USERNAME || 'username',
-    credential: process.env.TURN_CREDENTIAL || 'credential',
-  },
+  turnServer: hasTurn ? {
+    urls: TURN_URL,
+    username: TURN_USERNAME || '',
+    credential: TURN_CREDENTIAL,
+  } : null,
+  stunServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ],
+  maxGroupParticipants: parseInt(process.env.MAX_GROUP_PARTICIPANTS, 10) || 6,
 };

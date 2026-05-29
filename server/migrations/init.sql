@@ -5,19 +5,25 @@ CREATE DATABASE IF NOT EXISTS whatsapp_clone
 USE whatsapp_clone;
 
 CREATE TABLE IF NOT EXISTS Users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  phoneNumber VARCHAR(20) NOT NULL UNIQUE,
-  username VARCHAR(50) NOT NULL,
-  email VARCHAR(100),
-  password VARCHAR(255) NOT NULL,
-  avatar VARCHAR(500),
-  status VARCHAR(150) DEFAULT 'Hey there! I am using TuChat',
-  isOnline BOOLEAN DEFAULT false,
-  lastSeen DATETIME DEFAULT CURRENT_TIMESTAMP,
-  publicKey TEXT,
-  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+   id INT AUTO_INCREMENT PRIMARY KEY,
+   username VARCHAR(50) NOT NULL,
+   phoneNumber VARCHAR(20) NOT NULL UNIQUE,
+   avatar VARCHAR(500),
+   status VARCHAR(100),
+   isOnline BOOLEAN DEFAULT false,
+   lastSeen DATETIME,
+   isAdmin BOOLEAN DEFAULT false,
+   isBanned BOOLEAN DEFAULT false,
+   createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   INDEX idx_phone (phoneNumber),
+   INDEX idx_status (status)
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ -- Insert system user for broadcasts
+ INSERT INTO Users (id, username, phoneNumber, avatar, status, isOnline, lastSeen, isAdmin, isBanned, createdAt, updatedAt)
+ SELECT * FROM (SELECT 0, 'System', NULL, NULL, NULL, false, NULL, false, false, NOW(), NOW()) AS tmp
+ WHERE NOT EXISTS (SELECT id FROM Users WHERE id = 0);
 
 CREATE TABLE IF NOT EXISTS Messages (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -32,6 +38,7 @@ CREATE TABLE IF NOT EXISTS Messages (
   isDelivered BOOLEAN DEFAULT false,
   replyToId INT,
   reactions JSON DEFAULT (JSON_OBJECT()),
+  isBroadcast BOOLEAN DEFAULT false,
   createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (senderId) REFERENCES Users(id) ON DELETE CASCADE,

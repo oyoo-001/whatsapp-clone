@@ -50,6 +50,7 @@ export const messagesAPI = {
   deleteMessage: (messageId, mode) => api.delete(`/messages/${messageId}?mode=${mode}`),
   forwardMessage: (messageId, receiverId) => api.post('/messages/forward', { messageId, receiverId }),
   addReaction: (messageId, reaction) => api.put(`/messages/${messageId}/reaction`, { reaction }),
+  deleteConversation: (userId) => api.delete(`/messages/conversation/${userId}`),
 };
 
 export const callsAPI = {
@@ -74,6 +75,34 @@ export const groupsAPI = {
   deleteMessage: (groupId, data) => api.delete(`/groups/${groupId}/messages`, { data }),
   markAsRead: (groupId) => api.put(`/groups/${groupId}/read`),
 };
+
+export const adminAPI = {
+  getStats: () => api.get('/admin/stats'),
+  listUsers: () => api.get('/admin/users'),
+  banUser: (userId) => api.put(`/admin/users/${userId}/ban`),
+  makeAdmin: (userId) => api.put(`/admin/users/${userId}/make-admin`),
+  verifyUser: (userId) => api.put(`/admin/users/${userId}/verify`),
+  broadcast: (data) => api.post('/admin/broadcast', data),
+  getBroadcasts: () => api.get('/admin/broadcasts'),
+  deleteBroadcast: (id) => api.delete(`/admin/broadcast/${id}`),
+  getMessages: (userId) => api.get(`/admin/messages/${userId}`),
+  sendMessage: (data) => api.post('/admin/messages', data),
+  getSupportQueue: () => api.get('/admin/support/queue'),
+  getSupportHistory: () => api.get('/admin/support/history'),
+  claimTicket: (ticketId) => api.post(`/admin/support/ticket/${ticketId}/claim`),
+  resolveTicket: (ticketId) => api.post(`/admin/support/ticket/${ticketId}/resolve`),
+  getSupportTicketMessages: (ticketId) => api.get(`/admin/support/ticket/${ticketId}/messages`),
+  sendSupportMessage: (data) => api.post('/admin/support/message', data),
+};
+
+export const supportAPI = {
+  createTicket: () => api.post('/support/ticket'),
+  getMyTicket: () => api.get('/support/ticket'),
+  getMessages: () => api.get('/support/messages'),
+  sendMessage: (content) => api.post('/support/message', { content }),
+};
+
+export const getIceServers = () => api.get('/ice-servers');
 
 export const uploadAPI = {
   upload: (file, onProgress) => {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { messagesAPI } from '../services/api';
+import { messagesAPI, adminAPI } from '../services/api';
 import socketService from '../services/socket';
 import { cacheService } from '../services/cacheService';
 import useAuthStore from './authStore';
@@ -216,7 +216,15 @@ const useChatStore = create((set, get) => ({
     set({ editMessage: null });
   },
 
-  deleteMessageAction: async (messageId, mode) => {
+  deleteMessageAction: async (messageId, mode, message) => {
+    if (message?.isBroadcast) {
+      const bcId = String(messageId).replace('bc-', '');
+      await adminAPI.deleteBroadcast(bcId);
+      set((state) => ({
+        messages: state.messages.filter((m) => m.id !== messageId),
+      }));
+      return;
+    }
     await messagesAPI.deleteMessage(messageId, mode);
     if (mode === 'me') {
       get().updateMessageInStore(messageId, { content: null, fileUrl: null, messageType: 'text', isDeleted: true });
@@ -280,6 +288,24 @@ const useChatStore = create((set, get) => ({
         get().updateMessageInStore(data.messageId, { content: null, fileUrl: null, messageType: 'text', isDeleted: true });
       }
     });
+  },
+
+  deleteConversation: async (userId) => {
+    try {
+      await messagesAPI.deleteConversation(userId);
+      set((state) => ({
+        conversations: state.conversations.filter((c) => c.user.id !== userId),
+        messages: state.messages.filter((m) => m.senderId !== userId && m.receiverId !== userId),
+        activeChat: state.activeChat === userId ? null : state.activeChat,
+      }));
+      cacheService.removeConversation?.(userId);
+    } catch {}
+  },
+
+  removeMessage: (messageId) => {
+    set((state) => ({
+      messages: state.messages.filter((m) => m.id !== messageId && m._tempId !== messageId),
+    }));
   },
 
   clearActiveChat: () => set({ activeChat: null, messages: [], replyTo: null, editMessage: null, forwardMessage: null }),

@@ -148,13 +148,13 @@ const CallScreen = ({ route, navigation }) => {
   };
 
   const toggleMute = () => {
-    webrtcService.toggleAudio(isMuted);
+    webrtcService.toggleAudio(!isMuted);
     setIsMuted(!isMuted);
-    socketService.emit('call:toggle-audio', { to: callUser.id, audioEnabled: isMuted });
+    socketService.emit('call:toggle-audio', { to: callUser.id, audioEnabled: !isMuted });
   };
 
   const toggleVideo = () => {
-    webrtcService.toggleVideo(isVideo);
+    webrtcService.toggleVideo(!isVideo);
     setIsVideo(!isVideo);
     socketService.emit('call:toggle-video', { to: callUser.id, videoEnabled: !isVideo });
   };

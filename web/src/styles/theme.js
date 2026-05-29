@@ -20,6 +20,7 @@ export const Colors = {
   get lightGrey() { return cssVar('--lightGrey', '#E9EDEF'); },
   get lighterGrey() { return cssVar('--lighterGrey', '#F0F2F5'); },
   get darkGrey() { return '#3B4A54'; },
+  green: '#25D366',
   red: '#E53935',
   get chatBg() { return cssVar('--chatBg', '#ECE5DD'); },
   get receivedMsg() { return cssVar('--received', '#FFFFFF'); },

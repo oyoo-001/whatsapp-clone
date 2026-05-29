@@ -1,52 +1,126 @@
-import { useEffect, useRef } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import useAuthStore from '../stores/authStore';
 import socketService from '../services/socket';
-import webrtcService from '../services/webrtc';
-import useCallStore from '../stores/callStore';
+import { callsAPI } from '../services/api';
+import IncomingCallModal from './IncomingCallModal';
 import { playRingtone, stopRingtone } from '../services/notificationSound';
+
+const RING_TIMEOUT = 30000;
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
-  const { activeCall } = useCallStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [incomingCall, setIncomingCall] = useState(null);
   const ringingRef = useRef(false);
+  const timerRef = useRef(null);
+  const callLogIdRef = useRef(null);
+
+  const clearIncoming = useCallback(() => {
+    stopRingtone();
+    ringingRef.current = false;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    setIncomingCall(null);
+    callLogIdRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    if (location.pathname.startsWith('/call/') || location.pathname.startsWith('/group-call/')) return;
 
-    const unsubIncoming = socketService.on('call:incoming', ({ from, callType, user, callLogId }) => {
+    const unsubIncoming = socketService.on('call:incoming', async ({ from, user, channelName, callType, startedAt }) => {
       playRingtone();
       ringingRef.current = true;
+      setIncomingCall({ caller: user, callType, channelName, callerId: from, startedAt });
 
-      if (activeCall) {
-        if (!window.confirm(`${user?.username || 'User'} is calling. Put current call on hold and answer?`)) return;
-        if (webrtcService.localStream) {
-          webrtcService.localStream.getAudioTracks().forEach((t) => (t.enabled = false));
+      try {
+        const { data } = await callsAPI.initiateCall({
+          receiverId: from,
+          callType,
+        });
+        callLogIdRef.current = data.callLog.id;
+      } catch {}
+
+      timerRef.current = setTimeout(async () => {
+        stopRingtone();
+        ringingRef.current = false;
+        if (callLogIdRef.current) {
+          try { await callsAPI.updateCallStatus(callLogIdRef.current, 'missed'); } catch {}
         }
-      }
-      stopRingtone();
-      ringingRef.current = false;
-      navigate(`/call/${from}`, {
-        state: { user, callType, isIncoming: true, callLogId },
-      });
-    });
-
-    const unsubOffer = socketService.on('signal:offer', ({ from, offer }) => {
-      webrtcService.bufferOffer(from, offer);
+        socketService.emit('call:timeout', { to: from });
+        setIncomingCall(null);
+        callLogIdRef.current = null;
+      }, RING_TIMEOUT);
     });
 
     const unsubEnded = socketService.on('call:ended', () => {
-      if (ringingRef.current) {
-        stopRingtone();
-        ringingRef.current = false;
-      }
+      clearIncoming();
     });
 
-    return () => { unsubIncoming(); unsubOffer(); unsubEnded(); };
-  }, [isAuthenticated, activeCall]);
+    const unsubAccepted = socketService.on('call:accepted', () => {
+      clearIncoming();
+    });
 
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+    return () => {
+      unsubIncoming();
+      unsubEnded();
+      unsubAccepted();
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [isAuthenticated, location.pathname, clearIncoming]);
+
+  const handleAccept = async (channelName, callType) => {
+    stopRingtone();
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    const callerId = incomingCall?.callerId;
+    const logId = callLogIdRef.current;
+    if (logId) {
+      try { await callsAPI.updateCallStatus(logId, 'answered'); } catch {}
+    }
+    setIncomingCall(null);
+    callLogIdRef.current = null;
+    socketService.emit('call:accept', { to: callerId, channelName });
+    navigate(`/call/${channelName}`, {
+      state: {
+        name: incomingCall?.caller?.username,
+        callType,
+        caller: false,
+        remoteUserId: callerId,
+        callLogId: logId,
+        startedAt: incomingCall?.startedAt,
+        remoteAvatar: incomingCall?.caller?.avatar || null,
+      },
+    });
+  };
+
+  const handleReject = () => {
+    stopRingtone();
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (incomingCall) {
+      if (callLogIdRef.current) {
+        try { callsAPI.updateCallStatus(callLogIdRef.current, 'rejected'); } catch {}
+      }
+      socketService.emit('call:reject', { to: incomingCall.callerId });
+    }
+    setIncomingCall(null);
+    callLogIdRef.current = null;
+  };
+
+  return (
+    <>
+      {incomingCall && (
+        <IncomingCallModal
+          caller={incomingCall.caller}
+          callType={incomingCall.callType}
+          channelName={incomingCall.channelName}
+          onAccept={handleAccept}
+          onReject={handleReject}
+        />
+      )}
+      {isAuthenticated ? children : <Navigate to="/login" replace />}
+    </>
+  );
 };
 
 export default ProtectedRoute;

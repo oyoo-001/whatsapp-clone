@@ -8,14 +8,20 @@ const menuItems = [
   { icon: Trash2, label: 'Delete', action: 'delete', color: Colors.red },
 ];
 
-const MessageContextMenu = ({ open, onClose, onAction, isMine, position, message }) => {
+const MessageContextMenu = ({ open, onClose, onAction, isMine, position, message, isAdmin }) => {
   if (!open) return null;
 
-  const items = menuItems.filter((item) => {
-    if (item.action === 'edit' && !isMine) return false;
-    if (item.action === 'delete' && !isMine) return false;
-    return true;
-  });
+const items = menuItems.filter((item) => {
+  if (item.action === 'edit' && !isMine) return false;
+  if (item.action === 'delete') {
+    if (message?.isBroadcast) return !!isAdmin;
+    if (!isMine) return false;
+  }
+  if (message?.isBroadcast && (item.action === 'reply' || item.action === 'forward' || item.action === 'edit')) {
+    return false;
+  }
+  return true;
+});
 
   return (
     <div onClick={onClose} style={{

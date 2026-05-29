@@ -1,414 +1,298 @@
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import {
-  Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Maximize2, Minimize2,
-  Volume2, VolumeX, UserPlus, Users, Pause, Play,
-} from 'lucide-react';
-import socketService from '../services/socket';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Monitor, Smartphone } from 'lucide-react';
 import webrtcService from '../services/webrtc';
+import socketService from '../services/socket';
+import useAuthStore from '../stores/authStore';
 import { callsAPI } from '../services/api';
-import useCallStore from '../stores/callStore';
 import { Colors } from '../styles/theme';
+import { useWebRTCSignaling } from '../services/useWebRTC';
 
 const CallPage = () => {
-  const { userId } = useParams();
+  const { channelName } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
-  const chatUser = state?.user;
-  const callType = state?.callType || 'voice';
-  const isIncoming = state?.isIncoming || false;
-  const incomingCallLogId = state?.callLogId;
-  const isReturning = state?.returnToCall || false;
+  const { user: currentUser } = useAuthStore();
+  const callType = state?.callType || 'video';
+  const isAudioOnly = callType === 'voice';
+  const meetingName = state?.name || 'Call';
+  const isCaller = state?.caller !== false;
+  const remoteUserId = state?.remoteUserId || null;
+  const startedAt = state?.startedAt || Date.now();
+  const initialDuration = Math.floor((Date.now() - startedAt) / 1000);
+  const remoteAvatar = state?.remoteAvatar || null;
 
-  const uid = Number(userId);
-  const { setActiveCall, clearActiveCall } = useCallStore();
-
-  const [callState, setCallState] = useState(() => {
-    if (isReturning) return 'connected';
-    return isIncoming ? 'ringing' : 'calling';
-  });
-  const [isVideo, setIsVideo] = useState(callType === 'video');
+  const [callState, setCallState] = useState(isCaller ? 'calling' : 'connecting');
   const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [duration, setDuration] = useState(0);
-  const [localStream, setLocalStream] = useState(null);
+  const [isVideoOff, setIsVideoOff] = useState(isAudioOnly);
   const [remoteStream, setRemoteStream] = useState(null);
-  const [pip, setPip] = useState(true);
-  const [isOnHold, setIsOnHold] = useState(false);
-  const [callLogId, setCallLogId] = useState(incomingCallLogId || null);
-  const [participants, setParticipants] = useState(
-    chatUser ? [{ id: uid, user: chatUser }] : []
-  );
+  const [duration, setDuration] = useState(Math.max(0, initialDuration));
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [error, setError] = useState(null);
+
   const localRef = useRef(null);
   const remoteRef = useRef(null);
-  const audioRef = useRef(null);
   const timerRef = useRef(null);
-  const logRef = useRef(false);
-  const acceptedRef = useRef(false);
-  const startTimeRef = useRef(null);
-  const callStateRef = useRef(callState);
+  const leftRef = useRef(false);
+  const callLogIdRef = useRef(state?.callLogId || null);
+  const startedAtRef = useRef(startedAt);
+  const remoteUserIdRef = useRef(remoteUserId);
 
-  useEffect(() => {
-    if (isReturning) {
-      setCallState('connected');
-      if (webrtcService.remoteStream) setRemoteStream(webrtcService.remoteStream);
-      if (webrtcService.isCallActive) startTimer(webrtcService.activeCallInfo?.startTime || Date.now());
-    } else {
-      if (!isIncoming) startCall();
-    }
-    setupListeners();
-    const pendingOffer = webrtcService.consumePendingOffer(uid);
-    if (pendingOffer) {
-      webrtcService.handleOffer(pendingOffer.from, pendingOffer.offer);
-    }
-    return () => {
-      webrtcService.activeCallInfo = {
-        userId: uid,
-        user: chatUser,
-        callLogId,
-        startTime: startTimeRef.current,
-      };
-      webrtcService.onCallEnded = null;
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (callStateRef.current === 'connected') {
-        setActiveCall({
-          userId: uid,
-          user: chatUser,
-          callType: isVideo ? 'video' : 'voice',
-          duration,
-          remoteStream,
-          isMuted,
-          isSpeakerOn,
-          isVideo,
-          isOnHold,
-        });
-      }
-    };
+  const cleanupAndGoBack = useCallback(() => {
+    if (leftRef.current) return;
+    leftRef.current = true;
+    webrtcService.cleanup();
+    navigate(-1);
+  }, [navigate]);
+
+  const handleRemoteStream = useCallback((userId, stream) => {
+    setRemoteStream(stream);
+    setCallState('connected');
   }, []);
 
-  useEffect(() => { callStateRef.current = callState; }, [callState]);
+  const handleRemoteLeave = useCallback(() => {
+    setRemoteStream(null);
+    if (!leftRef.current) cleanupAndGoBack();
+  }, [cleanupAndGoBack]);
+
+  useWebRTCSignaling({
+    channelName,
+    isCaller,
+    remoteUserId: remoteUserIdRef.current,
+    onRemoteStream: handleRemoteStream,
+    onRemoteLeave: handleRemoteLeave,
+    onCallAccepted: useCallback(() => {
+      setCallState('connected');
+    }, []),
+    onCallRejected: useCallback(() => {
+      if (!leftRef.current && isCaller) cleanupAndGoBack();
+    }, [isCaller, cleanupAndGoBack]),
+    onCallEnded: useCallback(() => {
+      if (!leftRef.current) cleanupAndGoBack();
+    }, [cleanupAndGoBack]),
+    onCallTimedout: useCallback(() => {
+      if (!leftRef.current && isCaller) cleanupAndGoBack();
+    }, [isCaller, cleanupAndGoBack]),
+  });
 
   useEffect(() => {
-    if (localRef.current && localStream)
-      localRef.current.srcObject = localStream;
-  }, [localStream]);
-
-  useEffect(() => {
-    if (remoteRef.current && remoteStream && isVideo)
-      remoteRef.current.srcObject = remoteStream;
-    if (audioRef.current && remoteStream && !isVideo)
-      audioRef.current.srcObject = remoteStream;
-  }, [remoteStream, isVideo]);
-
-  useEffect(() => {
-    if (callState === 'connected' && remoteStream) {
-      setActiveCall({
-        userId: uid,
-        user: chatUser,
-        callType: isVideo ? 'video' : 'voice',
-        duration,
-        remoteStream,
-        isMuted,
-        isSpeakerOn,
-        isVideo,
-        isOnHold,
-      });
-    } else if (callState !== 'connected') {
-      clearActiveCall();
-    }
-  }, [callState, remoteStream, duration, isOnHold]);
-
-  const setupListeners = () => {
-    const handlers = [
-      socketService.on('signal:offer', async ({ from, offer }) => {
-        if (from === uid) await webrtcService.handleOffer(from, offer);
-      }),
-      socketService.on('signal:answer', async ({ from, answer }) => {
-        if (from === uid) await webrtcService.handleAnswer(from, answer);
-      }),
-      socketService.on('signal:ice-candidate', async ({ from, candidate }) => {
-        if (from === uid) await webrtcService.handleIceCandidate(from, candidate);
-      }),
-      socketService.on('call:accepted', ({ from, connectedAt }) => {
-        if (from === uid) startTimer(connectedAt);
-      }),
-      socketService.on('call:connected', ({ connectedAt }) => {
-        if (!startTimeRef.current) startTimer(connectedAt);
-      }),
-      socketService.on('call:ended', ({ from }) => {
-        if (from === uid || participants.some((p) => p.id === from)) endCall();
-      }),
-      socketService.on('call:ringing', () => {
-        if (!isIncoming) setCallState('ringing');
-      }),
-      socketService.on('call:participant-joined', ({ userId: puid, user }) => {
-        setParticipants((prev) => {
-          if (prev.some((p) => p.id === puid)) return prev;
-          return [...prev, { id: puid, user }];
-        });
-      }),
-      socketService.on('call:participant-left', ({ userId: puid }) => {
-        setParticipants((prev) => prev.filter((p) => p.id !== puid));
-      }),
-    ];
-
-    webrtcService.onRemoteStream = (id, s) => {
-      if (id === uid) setRemoteStream(s);
-    };
-    webrtcService.onCallEnded = () => endCall();
-
-    webrtcService.onOfferReady = (from) => {
-      if (acceptedRef.current) {
-        webrtcService.acceptCall(isVideo);
+    let cancelled = false;
+    const init = async () => {
+      try {
+        await webrtcService.startLocalStream(isAudioOnly);
+        if (cancelled) return;
+        if (localRef.current && webrtcService.localStream) {
+          localRef.current.srcObject = webrtcService.localStream;
+          localRef.current.muted = true;
+        }
+      } catch (err) {
+        if (!cancelled) setError('Could not access camera/microphone. Please check permissions.');
       }
     };
-
-    return () => handlers.forEach((u) => u());
-  };
-
-  const startTimer = (connectedAt) => {
-    startTimeRef.current = connectedAt;
-    if (timerRef.current) clearInterval(timerRef.current);
+    init();
     timerRef.current = setInterval(() => {
-      setDuration(Math.floor((Date.now() - connectedAt) / 1000));
+      setDuration(Math.floor((Date.now() - startedAtRef.current) / 1000));
     }, 1000);
-    setCallState('connected');
-  };
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isAudioOnly]);
 
-  const startCall = async () => {
-    try {
-      const ok = await webrtcService.startCall(uid, isVideo);
-      if (!ok) return navigate('/');
-      if (webrtcService.localStream) setLocalStream(webrtcService.localStream);
-      let logId = null;
-      try {
-        const { data } = await callsAPI.initiateCall({
-          receiverId: uid,
-          callType: isVideo ? 'video' : 'voice',
-        });
-        logId = data.callLog.id;
-        setCallLogId(logId);
-      } catch {}
-      socketService.emit('call:start', {
-        to: uid,
-        callType: isVideo ? 'video' : 'voice',
-        callLogId: logId,
-      });
-    } catch {
-      clearActiveCall();
-      navigate('/');
+  const handleLeave = async () => {
+    if (leftRef.current) return;
+    leftRef.current = true;
+    if (callLogIdRef.current && callState === 'connected') {
+      try { await callsAPI.updateCallStatus(callLogIdRef.current, 'ended'); } catch {}
     }
-  };
-
-  const acceptCall = async () => {
-    acceptedRef.current = true;
-    setCallState('connected');
-    const ok = await webrtcService.acceptCall(isVideo);
-    if (!ok) return endCall();
-    if (webrtcService.localStream) setLocalStream(webrtcService.localStream);
-    socketService.emit('call:accept', { to: uid });
-    if (callLogId) {
-      try { await callsAPI.updateCallStatus(callLogId, 'answered'); } catch {}
+    if (remoteUserIdRef.current) {
+      socketService.emit('call:end', { to: remoteUserIdRef.current });
     }
-  };
-
-  const endCall = async () => {
-    socketService.emit('call:end', { to: uid });
     webrtcService.cleanup();
-    clearActiveCall();
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (callLogId && !logRef.current) {
-      logRef.current = true;
-      try {
-        if (callStateRef.current === 'connected') {
-          await callsAPI.updateCallStatus(callLogId, 'ended');
-        } else {
-          await callsAPI.updateCallStatus(callLogId, 'cancelled');
-        }
-      } catch {}
-    }
-    navigate('/');
-  };
-
-  const rejectCall = async () => {
-    socketService.emit('call:reject', { to: uid });
-    webrtcService.cleanup();
-    clearActiveCall();
-    if (callLogId) {
-      try { await callsAPI.updateCallStatus(callLogId, 'rejected'); } catch {}
-    }
-    navigate('/');
+    navigate(-1);
   };
 
   const toggleMute = () => {
-    webrtcService.toggleAudio(isMuted);
-    setIsMuted(!isMuted);
-    socketService.emit('call:toggle-audio', { to: uid, audioEnabled: isMuted });
+    const next = !isMuted;
+    webrtcService.toggleMic(!next);
+    setIsMuted(next);
   };
 
-  const toggleVideo = async () => {
-    const enabled = !isVideo;
+  const toggleVideo = () => {
+    if (isAudioOnly) return;
+    const next = !isVideoOff;
+    webrtcService.toggleCamera(!next);
+    setIsVideoOff(next);
+  };
+
+  const toggleScreenShare = async () => {
     try {
-      await webrtcService.toggleVideo(enabled);
-      setIsVideo(enabled);
-      socketService.emit('call:toggle-video', { to: uid, videoEnabled: enabled });
-    } catch {}
-  };
-
-  const toggleSpeaker = () => {
-    webrtcService.switchSpeaker(!isSpeakerOn);
-    setIsSpeakerOn(!isSpeakerOn);
-  };
-
-  const toggleHold = () => {
-    const hold = !isOnHold;
-    setIsOnHold(hold);
-    if (webrtcService.localStream) {
-      webrtcService.localStream.getAudioTracks().forEach((t) => (t.enabled = !hold));
-      webrtcService.localStream.getVideoTracks().forEach((t) => (t.enabled = !hold));
-    }
-    socketService.emit('call:toggle-audio', { to: uid, audioEnabled: !hold });
-  };
-
-  const addParticipant = () => {
-    navigate('/contacts', {
-      state: { returnTo: `/call/${uid}`, callType: isVideo ? 'video' : 'voice', activeCallId: callLogId },
-    });
+      if (isScreenSharing) {
+        await webrtcService.stopScreenShare();
+        setIsScreenSharing(false);
+      } else {
+        await webrtcService.startScreenShare();
+        setIsScreenSharing(true);
+      }
+    } catch { setIsScreenSharing(false); }
   };
 
   const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
+  if (error) {
+    return (
+      <div style={{
+        height: '100vh', background: '#0D1117', display: 'flex',
+        flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32,
+      }}>
+        <div style={{ color: '#E53935', fontSize: 48 }}>!</div>
+        <h2 style={{ color: Colors.white, margin: 0, fontSize: 18 }}>Call Failed</h2>
+        <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontSize: 14, margin: 0 }}>{error}</p>
+        <button onClick={() => navigate(-1)} style={{
+          padding: '10px 32px', borderRadius: 24, border: 'none',
+          background: Colors.green, color: Colors.white, fontSize: 14,
+          fontWeight: 600, cursor: 'pointer', marginTop: 8,
+        }}>Go Back</button>
+      </div>
+    );
+  }
+
+  const statusText = callState === 'calling' ? 'Calling...'
+    : callState === 'connecting' ? 'Connecting...'
+    : callState === 'connected' ? fmt(duration)
+    : 'Connecting...';
+
   return (
     <div style={{
       height: '100vh', background: '#0D1117', display: 'flex',
-      flexDirection: 'column', position: 'relative', overflow: 'hidden',
-      fontFamily: 'Inter, -apple-system, sans-serif',
+      flexDirection: 'column', fontFamily: 'Inter, -apple-system, sans-serif',
     }}>
-      {!isVideo && (
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 0,
-          height: '100%', background: 'radial-gradient(ellipse at center bottom, rgba(7,94,84,0.15) 0%, transparent 70%)',
-        }} />
-      )}
-
-      {remoteStream && isVideo ? (
-        <video ref={remoteRef} autoPlay playsInline style={{
-          position: 'absolute', inset: 0, width: '100%', height: '100%',
-          objectFit: 'cover',
-        }} />
-      ) : (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, zIndex: 1 }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {callState !== 'connected' && (
           <div style={{
-            width: 120, height: 120, borderRadius: '50%',
-            background: `linear-gradient(135deg, hsl(${uid * 60 % 360}, 45%, 45%), hsl(${uid * 60 % 360 + 30}, 50%, 35%))`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: Colors.white, fontSize: 48, fontWeight: 700,
-            boxShadow: '0 8px 40px rgba(0,0,0,0.4), 0 0 80px rgba(7,94,84,0.2)',
-          }}>{chatUser?.username?.charAt(0).toUpperCase()}</div>
-          <h2 style={{ color: Colors.white, margin: '8px 0 0', fontSize: 24, fontWeight: 600 }}>{chatUser?.username}</h2>
+            position: 'absolute', inset: 0, zIndex: 5, display: 'flex',
+            flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16,
+          }}>
+            {remoteAvatar ? (
+              <img src={remoteAvatar} alt="" style={{
+                width: 80, height: 80, borderRadius: '50%', objectFit: 'cover',
+              }} />
+            ) : (
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%',
+                background: `linear-gradient(135deg, hsl(${((remoteUserId || 0) * 60) % 360}, 45%, 45%), hsl(${((remoteUserId || 0) * 60 + 30) % 360}, 50%, 35%))`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: Colors.white, fontSize: 36, fontWeight: 700,
+              }}>
+                {(meetingName || '?').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>{meetingName}</div>
+          </div>
+        )}
 
-          {participants.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
-              <Users size={14} />
-              <span>{participants.length} participants</span>
+        <header style={{
+          padding: '12px 20px', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', zIndex: 10, paddingTop: 20,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: callState === 'connected' ? Colors.green : '#FFC107',
+            }} />
+            <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>{statusText}</span>
+          </div>
+        </header>
+
+        <div style={{
+          flex: 1, padding: 12, overflowY: 'auto',
+          display: 'grid',
+          gridTemplateColumns: remoteStream ? '1fr 1fr' : '1fr',
+          gap: 10, alignContent: 'center',
+        }}>
+          <div style={{
+            position: 'relative', borderRadius: 14, overflow: 'hidden',
+            aspectRatio: '4/3', background: '#1a1a2e', minHeight: 200,
+          }}>
+            <video ref={localRef} autoPlay playsInline muted style={{
+              width: '100%', height: '100%', objectFit: 'cover',
+              transform: isAudioOnly ? 'none' : 'scaleX(-1)',
+            }} />
+            {(isAudioOnly || isVideoOff) && (
+              <div style={{
+                position: 'absolute', inset: 0, display: 'flex',
+                flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
+              }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: `linear-gradient(135deg, hsl(${(currentUser?.id || 0) * 60 % 360}, 45%, 45%), hsl(${(currentUser?.id || 0) * 60 % 360 + 30}, 50%, 35%))`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: Colors.white, fontWeight: 700, fontSize: 28,
+                }}>
+                  {currentUser?.username?.charAt(0).toUpperCase() || '?'}
+                </div>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>You</span>
+              </div>
+            )}
+            <div style={{
+              position: 'absolute', bottom: 8, left: 8,
+              background: 'rgba(0,0,0,0.5)', borderRadius: 6,
+              padding: '3px 8px', fontSize: 11, color: Colors.white,
+            }}>You</div>
+          </div>
+
+          {remoteStream && (
+            <div style={{
+              position: 'relative', borderRadius: 14, overflow: 'hidden',
+              aspectRatio: '4/3', background: '#1a1a2e', minHeight: 200,
+            }}>
+              <video ref={(el) => { if (el && remoteStream) el.srcObject = remoteStream; }} autoPlay playsInline style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+              }} />
+              <div style={{
+                position: 'absolute', bottom: 8, left: 8,
+                background: 'rgba(0,0,0,0.5)', borderRadius: 6,
+                padding: '3px 8px', fontSize: 11, color: Colors.white,
+              }}>{meetingName}</div>
             </div>
           )}
-
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, margin: 0, letterSpacing: '0.3px' }}>
-            {callState === 'calling' ? 'Calling...' :
-             callState === 'ringing' && !isIncoming ? 'Ringing...' :
-             callState === 'ringing' ? 'Incoming call...' :
-             callState === 'connected' ? fmt(duration) : ''}
-          </p>
         </div>
-      )}
-
-      {!isVideo && remoteStream && (
-        <audio ref={audioRef} autoPlay playsInline className="remote-audio" style={{ display: 'none' }} />
-      )}
-
-      {isVideo && localStream && pip && (
-        <div style={{
-          position: 'absolute', top: 20, right: 20, width: 120, height: 180,
-          borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
-          border: '2px solid rgba(255,255,255,0.15)', cursor: 'pointer', zIndex: 10,
-        }} onClick={() => setPip(!pip)}>
-          <video ref={localRef} autoPlay playsInline muted style={{
-            width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)',
-          }} />
-        </div>
-      )}
+      </div>
 
       <div style={{
-        padding: '20px 20px 48px', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', gap: 20, zIndex: 10,
+        padding: '16px 20px 40px', display: 'flex',
+        justifyContent: 'center', gap: 20, alignItems: 'center',
         background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
       }}>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center', justifyContent: 'center' }}>
-          {callState === 'ringing' && isIncoming ? (
-            <CtrlBtn icon={<PhoneOff size={22} />} label="Decline" onClick={rejectCall}
-              bg="#E53935" />
-          ) : (
-            <>
-              <CtrlBtn icon={isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-                label={isMuted ? 'Unmute' : 'Mute'} onClick={toggleMute}
-                active={isMuted} />
-              <CtrlBtn icon={isSpeakerOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
-                label={isSpeakerOn ? 'Speaker' : 'Earpiece'} onClick={toggleSpeaker}
-                active={!isSpeakerOn} />
-              {isVideo && (
-                <CtrlBtn icon={isVideo ? <Video size={20} /> : <VideoOff size={20} />}
-                  label={isVideo ? 'Video' : 'Off'} onClick={toggleVideo}
-                  active={!isVideo} />
-              )}
-              <CtrlBtn icon={<UserPlus size={20} />} label="Add" onClick={addParticipant}
-                bg="rgba(255,255,255,0.1)" />
-              <CtrlBtn icon={isOnHold ? <Play size={20} /> : <Pause size={20} />}
-                label={isOnHold ? 'Resume' : 'Hold'} onClick={toggleHold}
-                active={isOnHold} />
-              {isVideo && (
-                <CtrlBtn icon={pip ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-                  label={pip ? 'PiP' : 'Full'} onClick={() => setPip(!pip)} />
-              )}
-            </>
-          )}
-        </div>
-
-        {callState === 'ringing' && isIncoming ? (
-          <MainBtn icon={<Phone size={28} />} label="Accept" onClick={acceptCall}
-            bg={Colors.green} boxShadow="0 4px 24px rgba(37,211,102,0.5)" />
-        ) : (
-          <MainBtn icon={<Phone size={28} style={{ transform: 'rotate(135deg)' }} />}
-            label="End" onClick={endCall}
-            bg={Colors.red} boxShadow="0 4px 24px rgba(229,57,53,0.5)" />
+        <CtrlBtn icon={isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+          label={isMuted ? 'Unmute' : 'Mute'} active={isMuted} onClick={toggleMute} />
+        {!isAudioOnly && (
+          <CtrlBtn icon={isVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
+            label={isVideoOff ? 'Camera On' : 'Camera Off'} active={isVideoOff} onClick={toggleVideo} />
         )}
+        <CtrlBtn icon={isScreenSharing ? <Smartphone size={20} /> : <Monitor size={20} />}
+          label={isScreenSharing ? 'Stop Share' : 'Share'} active={isScreenSharing} onClick={toggleScreenShare} />
+        <button onClick={handleLeave} style={{
+          width: 56, height: 56, borderRadius: '50%', background: Colors.red,
+          border: 'none', cursor: 'pointer', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 24px rgba(229,57,53,0.5)',
+        }}><PhoneOff size={24} color={Colors.white} /></button>
       </div>
     </div>
   );
 };
 
-const CtrlBtn = ({ icon, label, onClick, active, bg }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+const CtrlBtn = ({ icon, label, active, onClick }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
     <button onClick={onClick} style={{
       width: 48, height: 48, borderRadius: '50%',
-      background: active ? '#E53935' : (bg || 'rgba(255,255,255,0.1)'),
-      border: 'none', cursor: 'pointer', display: 'flex',
-      alignItems: 'center', justifyContent: 'center', color: Colors.white,
-      transition: 'all 0.2s', backdropFilter: active ? 'none' : 'blur(8px)',
+      background: active ? '#E53935' : 'rgba(255,255,255,0.1)',
+      border: 'none', cursor: 'pointer', color: Colors.white,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backdropFilter: 'blur(8px)',
     }}>{icon}</button>
-    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: 500 }}>{label}</span>
-  </div>
-);
-
-const MainBtn = ({ icon, label, onClick, bg, boxShadow }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-    <button onClick={onClick} style={{
-      width: 72, height: 72, borderRadius: '50%',
-      background: bg, border: 'none', cursor: 'pointer', display: 'flex',
-      alignItems: 'center', justifyContent: 'center', color: Colors.white,
-      boxShadow: boxShadow || 'none', transition: 'all 0.2s',
-    }}>{icon}</button>
-    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600 }}>{label}</span>
+    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>{label}</span>
   </div>
 );
 

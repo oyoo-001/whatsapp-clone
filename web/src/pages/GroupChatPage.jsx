@@ -94,7 +94,15 @@ const GroupChatPage = () => {
   const [deleteMode, setDeleteMode] = useState('me');
   const longPressTimer = useRef(null);
   const hasTriggered = useRef(false);
-  const [activeGroupCall, setActiveGroupCall] = useState(null);
+  const [activeGroupCall, setActiveGroupCall] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem(`groupCall_${groupId}`)); } catch { return null; }
+  });
+
+  const saveGroupCall = (data) => {
+    setActiveGroupCall(data);
+    if (data) sessionStorage.setItem(`groupCall_${groupId}`, JSON.stringify(data));
+    else sessionStorage.removeItem(`groupCall_${groupId}`);
+  };
 
   useEffect(() => {
     if (!getGroup(groupId)) fetchGroups();
@@ -123,17 +131,7 @@ const GroupChatPage = () => {
       });
     });
 
-    const unsubCallStart = socketService.on('call:group-started', ({ groupId: gId, callType, caller }) => {
-      if (String(gId) !== String(groupId)) return;
-      setActiveGroupCall({ callType, caller });
-    });
-
-    const unsubCallEnd = socketService.on('call:group-ended', ({ groupId: gId }) => {
-      if (String(gId) !== String(groupId)) return;
-      setActiveGroupCall(null);
-    });
-
-    return () => { unsubMsg(); unsubDel(); unsubTyping(); unsubCallStart(); unsubCallEnd(); };
+    return () => { unsubMsg(); unsubDel(); unsubTyping(); };
   }, [groupId]);
 
   useEffect(() => {
@@ -217,9 +215,10 @@ const GroupChatPage = () => {
   };
 
   const startCall = (callType) => {
-    socketService.emit('call:group-started', { groupId: Number(groupId), callType });
-    navigate(`/meeting/${groupId}`, {
-      state: { name: group.name, callType },
+    const channelName = `group-${groupId}-${Date.now()}`;
+    const memberIds = group?.members?.map((m) => m.id || m.userId) || [];
+    navigate(`/group-call/${channelName}`, {
+      state: { groupName: group.name, callType, startedAt: Date.now(), memberIds, groupId },
     });
   };
 
@@ -509,7 +508,7 @@ const GroupChatPage = () => {
       </header>
 
       {/* Active group call banner */}
-      {activeGroupCall && (
+          {activeGroupCall && (
         <div style={{
           background: '#1B5E20', padding: '10px 16px', display: 'flex',
           alignItems: 'center', gap: 10, color: Colors.white,
@@ -519,9 +518,11 @@ const GroupChatPage = () => {
             {activeGroupCall.caller?.username || 'Someone'} started a {activeGroupCall.callType} call
           </span>
           <button onClick={() => {
-            setActiveGroupCall(null);
-            navigate(`/meeting/${groupId}`, {
-              state: { name: group.name, callType: activeGroupCall.callType },
+            saveGroupCall(null);
+            const channelName = `group-${groupId}-${Date.now()}`;
+            const memberIds = group?.members?.map((m) => m.id || m.userId) || [];
+            navigate(`/group-call/${channelName}`, {
+              state: { groupName: group.name, callType: activeGroupCall.callType, startedAt: Date.now(), memberIds, groupId },
             });
           }} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8,

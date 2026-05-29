@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { FileText, Mic, Image, X, Check, CheckCheck, Reply, Edit3, ZoomIn, ZoomOut } from 'lucide-react';
+import { FileText, Mic, Image, X, Check, CheckCheck, Reply, Edit3, ZoomIn, ZoomOut, Verified } from 'lucide-react';
 import { Colors } from '../styles/theme';
 
 const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEditing, onRetry }) => {
@@ -199,22 +199,28 @@ const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEd
           userSelect: 'none',
           WebkitUserSelect: 'none',
         }}>
-        {message.replyToContent && (
-          <div style={{
-            borderLeft: `3px solid ${Colors.accent}`, paddingLeft: 8,
-            marginBottom: 4, marginTop: 2,
-            background: isMine ? 'rgba(52,183,241,0.08)' : '#F0F7FF',
-            borderRadius: '0 4px 4px 0', padding: '4px 8px',
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: Colors.accent, marginBottom: 2 }}>
-              <Reply size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-              Reply
-            </div>
-            <div style={{ fontSize: 12, color: Colors.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {message.replyToContent}
-            </div>
-          </div>
-        )}
+         {message.replyToContent && (
+           <div style={{
+             borderLeft: `3px solid ${Colors.accent}`, paddingLeft: 8,
+             marginBottom: 4, marginTop: 2,
+             background: isMine ? 'rgba(52,183,241,0.08)' : '#F0F7FF',
+             borderRadius: '0 4px 4px 0', padding: '4px 8px',
+           }}>
+             <div style={{ fontSize: 11, fontWeight: 600, color: Colors.accent, marginBottom: 2 }}>
+               <Reply size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+               Reply
+             </div>
+             <div style={{ fontSize: 12, color: Colors.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+               {message.replyToContent}
+             </div>
+           </div>
+         )}
+         {message.isBroadcast && !message.isDeleted && (
+           <div style={{ fontSize: 11, color: Colors.accent, fontWeight: 500, marginTop: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+             <Verified size={12} color={Colors.accent} style={{ flexShrink: 0 }} />
+             Broadcast
+           </div>
+         )}
         {message.isForwarded && !message.isDeleted && (
           <div style={{ fontSize: 11, color: Colors.textHint, fontWeight: 500, marginBottom: 2 }}>
             Forwarded

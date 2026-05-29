@@ -154,7 +154,7 @@ const AboutPage = () => {
           </a>
           <a
             href="#"
-            onClick={(e) => e.preventDefault()}
+            onClick={(e) => { e.preventDefault(); navigate('/support-chat'); }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -162,9 +162,10 @@ const AboutPage = () => {
               color: Colors.primary,
               fontSize: 14,
               textDecoration: "none",
+              cursor: "pointer",
             }}
           >
-            <Mail size={18} /> Contact Support
+            <MessageCircle size={18} /> Contact Support
           </a>
         </div>
 

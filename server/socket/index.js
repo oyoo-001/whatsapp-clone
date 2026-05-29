@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 const { User } = require('../models');
-const { webrtcHandlers, connectedUsers, meetingRooms, activeCallUsers } = require('./webrtcHandlers');
+const { webrtcHandlers, connectedUsers } = require('./webrtcHandlers');
 
 const setupSocket = (io) => {
   io.use(async (socket, next) => {
@@ -54,17 +54,6 @@ const setupSocket = (io) => {
     socket.on('disconnect', async () => {
       console.log(`User disconnected: ${socket.userData.username}`);
       connectedUsers.delete(socket.userId);
-      activeCallUsers.delete(socket.userId);
-
-      for (const [meetingId, room] of meetingRooms) {
-        if (room.has(socket.userId)) {
-          room.delete(socket.userId);
-          io.to(`meeting:${meetingId}`).emit('meeting:user-left', { userId: socket.userId });
-          if (room.size === 0) {
-            meetingRooms.delete(meetingId);
-          }
-        }
-      }
 
       await User.update(
         { isOnline: false, lastSeen: new Date() },

@@ -39,4 +39,11 @@ const generateToken = (user) => {
   );
 };
 
-module.exports = { auth, generateToken };
+const adminAuth = async (req, res, next) => {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+};
+
+module.exports = { auth, adminAuth, generateToken };

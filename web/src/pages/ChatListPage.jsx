@@ -16,6 +16,10 @@ import {
   Lock,
   WifiOff,
   Users,
+  Verified,
+  Shield,
+  Trash2,
+  Archive,
 } from "lucide-react";
 import useAuthStore from "../stores/authStore";
 import useChatStore from "../stores/chatStore";
@@ -37,7 +41,7 @@ import NotificationPopup from "../components/NotificationPopup";
 const TABS = ["All", "Unread"];
 
 const ChatListPage = () => {
-  const { logout } = useAuthStore();
+  const { logout, user } = useAuthStore();
   const { conversations, fetchConversations, isLoading } = useChatStore();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("All");
@@ -52,13 +56,32 @@ const ChatListPage = () => {
   const [pinValue, setPinValue] = useState("");
   const [pinError, setPinError] = useState("");
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [contextMenu, setContextMenu] = useState(null);
   const typingTimers = useRef({});
   const navigate = useNavigate();
+
+  const getArchivedIds = () => JSON.parse(localStorage.getItem('archivedConversations') || '[]');
+  const setArchivedIds = (ids) => localStorage.setItem('archivedConversations', JSON.stringify(ids));
+  const isArchived = (userId) => getArchivedIds().includes(userId);
+  const toggleArchive = (userId) => {
+    const ids = getArchivedIds();
+    if (ids.includes(userId)) {
+      setArchivedIds(ids.filter(id => id !== userId));
+    } else {
+      setArchivedIds([...ids, userId]);
+    }
+  };
 
   useEffect(() => {
     requestNotificationPermission();
     fetchConversations();
     fetchGroups();
+  }, []);
+
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
   }, []);
 
   useEffect(() => {
@@ -140,6 +163,12 @@ const ChatListPage = () => {
         }, 3000);
       }
     });
+    const u7 = socketService.on("broadcast:new", () => {
+      useChatStore.getState().fetchConversations(true);
+    });
+    const u8 = socketService.on("broadcast:deleted", () => {
+      useChatStore.getState().fetchConversations(true);
+    });
     const u6 = socketService.on("group:message", ({ groupId, message }) => {
       useGroupStore.getState().receiveMessage(groupId, message);
       const { user: cu } = useAuthStore.getState();
@@ -160,30 +189,6 @@ const ChatListPage = () => {
         });
       }
     });
-    const u7 = socketService.on(
-      "call:group-started",
-      ({ groupId, callType, caller }) => {
-        const { user: cu } = useAuthStore.getState();
-        if (
-          caller?.id &&
-          String(caller.id) !== String(cu?.id) &&
-          localStorage.getItem("notifPopups") !== "false"
-        ) {
-          const group = useGroupStore
-            .getState()
-            .groups.find((g) => String(g.id) === String(groupId));
-          setNotifPopup({
-            message: {
-              content: `${caller.username || "Someone"} started a ${callType} call`,
-            },
-            user: { id: groupId, username: group?.name || "Group Call" },
-            isCall: true,
-            groupId,
-            callType,
-          });
-        }
-      },
-    );
     return () => {
       u1();
       u2();
@@ -192,6 +197,7 @@ const ChatListPage = () => {
       u5();
       u6();
       u7();
+      u8();
     };
   }, []);
 
@@ -245,6 +251,7 @@ const ChatListPage = () => {
     const c = item;
     const s = c.user.username.toLowerCase().includes(search.toLowerCase());
     if (activeTab === "Unread") return s && c.unreadCount > 0;
+    if (!search && isArchived(c.user.id)) return false;
     return s;
   });
 
@@ -355,34 +362,49 @@ const ChatListPage = () => {
             TuChat
           </h1>
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {[
-            {
-              icon: PhoneIncoming,
-              label: "Call Logs",
-              onClick: () => navigate("/call-logs"),
-            },
-            {
-              icon: User,
-              label: "Profile",
-              onClick: () => navigate("/profile"),
-            },
-            {
-              icon: MoreVertical,
-              label: "Menu",
-              onClick: () => setShowMenu(!showMenu),
-            },
-          ].map(({ icon: Icon, label, onClick }) => (
-            <button
-              key={label}
-              onClick={onClick}
-              style={headerBtn}
-              title={label}
-            >
-              <Icon size={20} />
-            </button>
-          ))}
-        </div>
+         <div style={{ display: "flex", gap: 4 }}>
+           {[
+             {
+               icon: PhoneIncoming,
+               label: "Call Logs",
+               onClick: () => navigate("/call-logs"),
+             },
+             {
+               icon: User,
+               label: "Profile",
+               onClick: () => navigate("/profile"),
+             },
+             {
+               icon: Shield,
+               label: "Admin",
+               onClick: () => {
+                 if (user.isAdmin) {
+                   navigate("/admin");
+                 }
+               },
+               // Only show if user is admin
+               ...(user.isAdmin ? {} : { display: "none" }),
+             },
+             {
+               icon: MoreVertical,
+               label: "Menu",
+               onClick: () => setShowMenu(!showMenu),
+             },
+           ].map(({ icon: Icon, label, onClick, ...props }) => {
+             // Skip rendering if display is none
+             if (props.display === "none") return null;
+             return (
+               <button
+                 key={label}
+                 onClick={onClick}
+                 style={headerBtn}
+                 title={label}
+               >
+                 <Icon size={20} />
+               </button>
+             );
+           })}
+         </div>
       </header>
 
       {showMenu && (
@@ -645,7 +667,7 @@ const ChatListPage = () => {
               const grp = item.group;
               return (
                 <div
-                  key={grp.id}
+                  key={`group-${grp.id}`}
                   onClick={() =>
                     navigate(`/group-chat/${grp.id}`, { state: { group: grp } })
                   }
@@ -762,8 +784,12 @@ const ChatListPage = () => {
             const conv = item;
             return (
               <div
-                key={conv.user.id}
+                key={`user-${conv.user.id}`}
                 onClick={() => openChat(conv)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, conv });
+                }}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -771,6 +797,7 @@ const ChatListPage = () => {
                   cursor: "pointer",
                   borderBottom: "0.5px solid #F0F2F5",
                   animation: `fadeInUp 0.3s ease ${i * 0.03}s both`,
+                  opacity: isArchived(conv.user.id) ? 0.5 : 1,
                 }}
               >
                 <div
@@ -823,6 +850,9 @@ const ChatListPage = () => {
                       }}
                     >
                       {conv.user.username}
+                      {(conv.user.id === 0 || conv.user.isVerified) && (
+                        <Verified size={14} color={Colors.accent} style={{ marginLeft: 4, flexShrink: 0 }} />
+                      )}
                     </span>
                     <span
                       style={{
@@ -834,19 +864,19 @@ const ChatListPage = () => {
                       {formatTime(conv.lastMessage?.createdAt)}
                     </span>
                   </div>
-                  {!conv.user.isOnline &&
+                  {conv.user.id === 0 ? (
+                    <div style={{ fontSize: 11, color: Colors.accent, marginTop: 1 }}>
+                      TuChat Team, we value you
+                    </div>
+                  ) : (
+                    !conv.user.isOnline &&
                     conv.user.lastSeen &&
                     !typingUsers[conv.user.id] && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: Colors.textHint,
-                          marginTop: 1,
-                        }}
-                      >
+                      <div style={{ fontSize: 11, color: Colors.textHint, marginTop: 1 }}>
                         {formatLastSeen(conv.user.lastSeen)}
                       </div>
-                    )}
+                    )
+                  )}
                   <div
                     style={{
                       display: "flex",
@@ -874,9 +904,9 @@ const ChatListPage = () => {
                       ) : conv.lastMessage ? (
                         `📎 ${conv.lastMessage.messageType}`
                       ) : (
-                        <span style={{ color: Colors.textHint }}>
-                          {conv.user.status || "Hey there! I am using TuChat"}
-                        </span>
+                      <span style={{ color: conv.user.id === 0 ? Colors.accent : Colors.textHint }}>
+                        {conv.user.id === 0 ? "TuChat Team, we value you" : (conv.user.status || "Hey there! I am using TuChat")}
+                      </span>
                       )}
                     </span>
                     {conv.unreadCount > 0 ? (
@@ -1170,6 +1200,53 @@ const ChatListPage = () => {
         </div>
       )}
 
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            background: Colors.white,
+            borderRadius: 8,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+            zIndex: 9999,
+            minWidth: 160,
+            padding: '4px 0',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            onClick={() => {
+              const { id } = contextMenu.conv.user;
+              const archived = isArchived(id);
+              toggleArchive(id);
+              useChatStore.getState().fetchConversations();
+              setContextMenu(null);
+            }}
+            style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: Colors.textPrimary }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <Archive size={16} />
+            {isArchived(contextMenu.conv.user.id) ? 'Unarchive' : 'Archive'}
+          </div>
+          <div
+            onClick={async () => {
+              const { id } = contextMenu.conv.user;
+              if (id === 0) return;
+              if (!window.confirm('Delete this conversation?')) return;
+              await useChatStore.getState().deleteConversation(id);
+              setContextMenu(null);
+            }}
+            style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#E53935' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <Trash2 size={16} />
+            Delete
+          </div>
+        </div>
+      )}
       {notifPopup && (
         <NotificationPopup
           message={notifPopup.message}

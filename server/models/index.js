@@ -5,6 +5,10 @@ const Contact = require('./Contact');
 const Group = require('./Group');
 const GroupMember = require('./GroupMember');
 const GroupMessage = require('./GroupMessage');
+const SupportTicket = require('./SupportTicket');
+const SupportMessage = require('./SupportMessage');
+const Broadcast = require('./Broadcast');
+const BroadcastRead = require('./BroadcastRead');
 
 User.hasMany(Message, { foreignKey: 'senderId', as: 'sentMessages' });
 User.hasMany(Message, { foreignKey: 'receiverId', as: 'receivedMessages' });
@@ -31,4 +35,17 @@ Group.hasMany(GroupMessage, { foreignKey: 'groupId', as: 'messages' });
 GroupMessage.belongsTo(Group, { foreignKey: 'groupId', as: 'group' });
 GroupMessage.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 
-module.exports = { User, Message, CallLog, Contact, Group, GroupMember, GroupMessage };
+User.hasMany(SupportTicket, { foreignKey: 'userId', as: 'supportTickets' });
+User.hasMany(SupportTicket, { foreignKey: 'adminId', as: 'assignedTickets' });
+SupportTicket.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+SupportTicket.belongsTo(User, { foreignKey: 'adminId', as: 'admin' });
+SupportTicket.hasMany(SupportMessage, { foreignKey: 'ticketId', as: 'messages' });
+SupportMessage.belongsTo(SupportTicket, { foreignKey: 'ticketId', as: 'ticket' });
+SupportMessage.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
+
+Broadcast.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
+Broadcast.hasMany(BroadcastRead, { foreignKey: 'broadcastId', as: 'reads' });
+BroadcastRead.belongsTo(Broadcast, { foreignKey: 'broadcastId', as: 'broadcast' });
+BroadcastRead.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+module.exports = { User, Message, CallLog, Contact, Group, GroupMember, GroupMessage, SupportTicket, SupportMessage, Broadcast, BroadcastRead };

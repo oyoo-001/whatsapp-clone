@@ -1,32 +1,33 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const cors = require('cors');
-const morgan = require('morgan');
-const path = require('path');
-require('dotenv').config({ path: __dirname + '/.env' });
-const { connectDB } = require('./config/database');
-const config = require('./config/config');
-const { setupSocket } = require('./socket/index');
+const express = require("express");
+const http = require("http");
+const socketIo = require("socket.io");
+const cors = require("cors");
+const morgan = require("morgan");
+const path = require("path");
+require("dotenv").config({ path: __dirname + "/.env" });
+const { connectDB } = require("./config/database");
+const config = require("./config/config");
+const { setupSocket } = require("./socket/index");
 
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const messageRoutes = require('./routes/messages');
-const callRoutes = require('./routes/calls');
-const uploadRoutes = require('./routes/upload');
-const groupRoutes = require('./routes/groups');
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/users");
+const messageRoutes = require("./routes/messages");
+const callRoutes = require("./routes/calls");
+const uploadRoutes = require("./routes/upload");
+const groupRoutes = require("./routes/groups");
+const adminRoutes = require("./routes/admin");
+const supportRoutes = require("./routes/support");
 
 const app = express();
 const server = http.createServer(app);
 
-const corsOrigin = process.env.NODE_ENV === 'production'
-  ? config.frontendUrl
-  : '*';
+const corsOrigin =
+  process.env.NODE_ENV === "production" ? config.frontendUrl : "*";
 
 const io = socketIo(server, {
   cors: {
     origin: corsOrigin,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   },
   pingTimeout: 60000,
@@ -34,70 +35,76 @@ const io = socketIo(server, {
 });
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(morgan('dev'));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(morgan("dev"));
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-if (process.env.NODE_ENV === 'production') {
-  const frontendDist = path.join(__dirname, '..', 'web', 'dist');
+if (process.env.NODE_ENV === "production") {
+  const frontendDist = path.join(__dirname, "..", "web", "dist");
   app.use(express.static(frontendDist));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/')) return next();
-    res.sendFile(path.join(frontendDist, 'index.html'));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) return next();
+    res.sendFile(path.join(frontendDist, "index.html"));
   });
 }
 
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/calls', callRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/groups', groupRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
+app.use("/api/calls", callRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/groups", groupRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/support", supportRoutes);
 
-app.get('/', (req, res) => {
+app.get("/", (req, res) => {
   res.json({
-    name: 'WhatsApp Clone API',
-    version: '1.0.0',
-    status: 'running',
+    name: "TuChat API",
+    version: "1.2.0",
+    status: "running",
     endpoints: {
-      health: '/api/health',
-      auth: '/api/auth',
-      users: '/api/users',
-      messages: '/api/messages',
-      calls: '/api/calls',
-      upload: '/api/upload',
+      health: "/api/health",
+      auth: "/api/auth",
+      users: "/api/users",
+      messages: "/api/messages",
+      calls: "/api/calls",
+      upload: "/api/upload",
     },
   });
 });
 
-app.get('/api/health', (req, res) => {
+app.get("/api/health", (req, res) => {
   res.json({
-    status: 'OK',
+    status: "OK",
     timestamp: new Date(),
     uptime: process.uptime(),
     frontendUrl: config.frontendUrl,
-    environment: process.env.NODE_ENV || 'development',
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
-app.get('/api/turn-credentials', (req, res) => {
-  res.json({
-    urls: config.turnServer.urls,
-    username: config.turnServer.username,
-    credential: config.turnServer.credential,
-  });
+app.get("/api/ice-servers", (req, res) => {
+  const servers = [...config.stunServers];
+  if (config.turnServer) {
+    servers.push({
+      urls: config.turnServer.urls,
+      username: config.turnServer.username,
+      credential: config.turnServer.credential,
+    });
+  }
+  res.json({ iceServers: servers });
 });
 
-app.set('io', io);
+app.set("io", io);
 setupSocket(io);
 
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
+  console.error("Unhandled error:", err);
   res.status(500).json({
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    error: "Internal server error",
+    message: process.env.NODE_ENV === "development" ? err.message : undefined,
   });
 });
 
@@ -108,7 +115,7 @@ const startServer = async () => {
 
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
   });
 };
 

@@ -1,249 +1,470 @@
-import socketService from './socket';
+import { getIceServers } from './api';
 
-const pendingOffers = new Map();
+const DEBUG = true;
+const log = (...args) => DEBUG && console.log('[WebRTC]', ...args);
+const warn = (...args) => DEBUG && console.warn('[WebRTC]', ...args);
 
-const CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-  ],
-  iceCandidatePoolSize: 10,
-  bundlePolicy: 'max-bundle',
-  rtcpMuxPolicy: 'require',
-};
-
-const AUDIO_CONSTRAINTS = {
-  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-  video: false,
-};
-
-const VIDEO_CONSTRAINTS = {
-  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-  video: { width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 }, frameRate: { ideal: 30, max: 30 }, facingMode: 'user' },
-};
+const PEER_TIMEOUT = 30000;
+const ICE_RESTART_TIMEOUT = 5000;
+const MAX_NEGOTIATION_RETRIES = 3;
 
 class WebRTCService {
   constructor() {
-    this.pc = null;
+    this.peerConnections = new Map();
+    this.isInitiatorMap = new Map();
+    this.pendingCandidates = new Map();
+    this.negotiationLocks = new Map();
+    this.negotiationRetries = new Map();
     this.localStream = null;
-    this.remoteStream = null;
-    this.onRemoteStream = null;
-    this.onCallEnded = null;
-    this.pendingCandidates = [];
-    this.pendingOffer = null;
-    this.onOfferReady = null;
-    this.activeCallInfo = null;
-    this.remoteUserId = null;
+    this.iceServers = null;
+    this.channel = null;
+    this.isAudioOnly = false;
+    this.localUserId = null;
+    this.debug = DEBUG;
+
+    this._callbacks = {
+      onRemoteStream: null,
+      onRemoteLeave: null,
+      onTrackCountChange: null,
+      onConnectionState: null,
+      onIceState: null,
+    };
+
+    this._cachedVideoTrack = null;
+    this._screenTrackInfo = null;
   }
 
-  async startCall(userId, isVideo) {
-    this.remoteUserId = userId;
-    this.pc = new RTCPeerConnection(CONFIG);
-    this.setupPcListeners(userId, this.pc);
-
-    try {
-      this.localStream = await navigator.mediaDevices.getUserMedia(isVideo ? VIDEO_CONSTRAINTS : AUDIO_CONSTRAINTS);
-    } catch { return false; }
-
-    this.localStream.getTracks().forEach((t) => this.pc.addTrack(t, this.localStream));
-
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    socketService.emit('signal:offer', { to: userId, offer: this.pc.localDescription });
-    this.addPendingCandidates(this.pc);
-    return true;
-  }
-
-  async handleOffer(from, offer) {
-    this.remoteUserId = from;
-
-    if (!this.pc || this.pc.connectionState === 'closed') {
-      this.pc = new RTCPeerConnection(CONFIG);
-      this.setupPcListeners(from, this.pc);
-    }
-
-    this.pendingOffer = { from, offer };
-    const desc = new RTCSessionDescription(offer);
-
-    if (this.pc.localDescription) {
-      await this.pc.setRemoteDescription(desc);
-      const answer = await this.pc.createAnswer();
-      await this.pc.setLocalDescription(answer);
-      socketService.emit('signal:answer', { to: from, answer: this.pc.localDescription });
-      this.addPendingCandidates(this.pc);
-    } else {
-      await this.pc.setRemoteDescription(desc);
-      if (this.onOfferReady) this.onOfferReady(from);
+  on(event, cb) {
+    if (event in this._callbacks) {
+      this._callbacks[event] = cb;
     }
   }
 
-  async acceptCall(isVideo) {
-    if (!this.pc || !this.pendingOffer) return false;
+  off(event) {
+    if (event in this._callbacks) {
+      this._callbacks[event] = null;
+    }
+  }
 
-    const from = this.pendingOffer.from;
+  async getIceConfig() {
+    if (this.iceServers) return this.iceServers;
+    try {
+      const { data } = await getIceServers();
+      this.iceServers = data.iceServers;
+      log('ICE config loaded:', this.iceServers.length, 'servers');
+    } catch {
+      this.iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ];
+      log('Using fallback STUN servers');
+    }
+    return this.iceServers;
+  }
+
+  async startLocalStream(audioOnly = false, constraints = null) {
+    this.isAudioOnly = audioOnly;
+    const mediaConstraints = constraints || {
+      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 },
+      video: audioOnly ? false : {
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 30 },
+      },
+    };
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((t) => t.stop());
+      this.localStream = null;
+    }
 
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia(isVideo ? VIDEO_CONSTRAINTS : AUDIO_CONSTRAINTS);
-    } catch { return false; }
+      this.localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      log('Local stream started:', this.localStream.getTracks().length, 'tracks');
+      return this.localStream;
+    } catch (err) {
+      log('getUserMedia error:', err.name, err.message);
+      throw err;
+    }
+  }
 
-    this.localStream.getTracks().forEach((t) => {
-      const existing = this.pc.getSenders().find((s) => s.track?.kind === t.kind);
-      if (existing) existing.replaceTrack(t);
-      else this.pc.addTrack(t, this.localStream);
+  replaceVideoTrack(newTrack) {
+    if (!this.localStream) return;
+    const oldTrack = this.localStream.getVideoTracks()[0];
+    if (oldTrack) {
+      this.localStream.removeTrack(oldTrack);
+      oldTrack.stop();
+    }
+    this.localStream.addTrack(newTrack);
+    this.peerConnections.forEach((pc) => {
+      const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+      if (sender) {
+        sender.replaceTrack(newTrack).catch((err) => warn('replaceTrack error:', err));
+      }
     });
-
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    socketService.emit('signal:answer', { to: from, answer: this.pc.localDescription });
-    this.addPendingCandidates(this.pc);
-    this.pendingOffer = null;
-    return true;
   }
 
-  async handleAnswer(from, answer) {
-    if (this.pc) {
-      await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
-      this.addPendingCandidates(this.pc);
+  createPeerConnectionConfig() {
+    return { iceServers: this.iceServers || [{ urls: 'stun:stun.l.google.com:19302' }] };
+  }
+
+  async createPeerConnection(userId, socket, isInitiator) {
+    if (this.peerConnections.has(userId)) {
+      log('PC exists for', userId, '- skipping duplicate');
+      return this.peerConnections.get(userId);
     }
-  }
 
-  async handleIceCandidate(from, candidate) {
-    const candidateObj = new RTCIceCandidate(candidate);
-    if (!this.pc) { this.pendingCandidates.push(candidateObj); return; }
-    try {
-      if (this.pc.remoteDescription && this.pc.remoteDescription.type) {
-        await this.pc.addIceCandidate(candidateObj);
-      } else {
-        this.pendingCandidates.push(candidateObj);
-      }
-    } catch (e) { console.warn('ICE candidate add failed:', e); }
-  }
+    const config = this.createPeerConnectionConfig();
+    const pc = new RTCPeerConnection(config);
+    this.peerConnections.set(userId, pc);
+    this.isInitiatorMap.set(userId, isInitiator);
+    this.pendingCandidates.set(userId, this.pendingCandidates.get(userId) || []);
+    this.negotiationLocks.set(userId, false);
+    this.negotiationRetries.set(userId, 0);
 
-  addPendingCandidates(pc) {
-    pc = pc || this.pc;
-    if (this.pendingCandidates.length > 0 && pc && pc.remoteDescription) {
-      const cands = this.pendingCandidates.splice(0);
-      cands.forEach((c) => pc.addIceCandidate(c).catch(() => {}));
-    }
-  }
+    let connectionLostAt = null;
 
-  setupPcListeners(userId, pc) {
-    let candidateBuffer = [];
-    let candidateTimer = null;
-
-    pc.onicecandidate = (e) => {
-      if (e.candidate) {
-        candidateBuffer.push(e.candidate);
-        if (!candidateTimer) {
-          candidateTimer = setTimeout(() => {
-            candidateBuffer.forEach((c) => socketService.emit('signal:ice-candidate', { to: userId, candidate: c }));
-            candidateBuffer = [];
-            candidateTimer = null;
-          }, 30);
-        }
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('webrtc:ice-candidate', { to: userId, candidate: event.candidate.toJSON() });
       }
     };
 
-    pc.ontrack = (e) => {
-      if (!this.remoteStream) {
-        this.remoteStream = e.streams[0];
-      } else {
-        e.streams[0].getTracks().forEach((t) => {
-          if (!this.remoteStream.getTracks().find((ot) => ot.id === t.id)) {
-            this.remoteStream.addTrack(t);
-          }
-        });
+    pc.ontrack = (event) => {
+      log('Track received from', userId, 'kind:', event.track?.kind);
+      if (this._callbacks.onRemoteStream) {
+        this._callbacks.onRemoteStream(userId, event.streams[0], event.track);
       }
-      if (this.onRemoteStream) this.onRemoteStream(userId, this.remoteStream);
     };
 
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        if (this.onCallEnded) this.onCallEnded(userId);
+    pc.onnegotiationneeded = async () => {
+      if (this.negotiationLocks.get(userId)) return;
+      this.negotiationLocks.set(userId, true);
+      try {
+        await pc.setLocalDescription(await pc.createOffer());
+        socket.emit('webrtc:offer', { to: userId, sdp: pc.localDescription.toJSON() });
+      } catch (err) {
+        warn('negotiationneeded error:', err);
+      } finally {
+        this.negotiationLocks.set(userId, false);
       }
     };
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'failed') pc.restartIce();
+      const state = pc.iceConnectionState;
+      log('ICE state', userId, ':', state);
+      if (this._callbacks.onIceState) {
+        this._callbacks.onIceState(userId, state);
+      }
+
+      if (state === 'disconnected' || state === 'failed') {
+        connectionLostAt = connectionLostAt || Date.now();
+        if (Date.now() - connectionLostAt > ICE_RESTART_TIMEOUT) {
+          log('ICE restart needed for', userId);
+          this._restartIce(userId, pc, socket);
+          connectionLostAt = null;
+        }
+      } else {
+        connectionLostAt = null;
+      }
     };
-  }
 
-  toggleAudio(enabled) {
-    this.localStream?.getAudioTracks().forEach((t) => (t.enabled = enabled));
-  }
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      log('Connection state', userId, ':', state);
+      if (this._callbacks.onConnectionState) {
+        this._callbacks.onConnectionState(userId, state);
+      }
 
-  async toggleVideo(enabled) {
-    if (!this.pc || !this.localStream) return;
-    const videoTracks = this.localStream.getVideoTracks();
-    if (enabled && videoTracks.length === 0) {
+      if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        if (state === 'failed') {
+          this._retryPeerConnection(userId, socket);
+        } else {
+          this._cleanupPeer(userId);
+        }
+      }
+    };
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => {
+        const sender = pc.addTrack(track, this.localStream);
+      });
+    }
+
+    if (isInitiator) {
       try {
-        const vs = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 }, frameRate: { ideal: 30, max: 30 }, facingMode: 'user' } });
-        const vt = vs.getVideoTracks()[0];
-        this.localStream.addTrack(vt);
-        this.pc.addTrack(vt, this.localStream);
-        const offer = await this.pc.createOffer({ iceRestart: true });
-        await this.pc.setLocalDescription(offer);
-        socketService.emit('signal:offer', { to: this.remoteUserId, offer: this.pc.localDescription });
-      } catch (e) { console.warn('toggleVideo on fail:', e); }
-    } else if (!enabled && videoTracks.length > 0) {
-      videoTracks.forEach((t) => { t.stop(); this.localStream.removeTrack(t); });
-      const sender = this.pc.getSenders().find((s) => s.track?.kind === 'video');
-      if (sender) this.pc.removeTrack(sender);
-      const offer = await this.pc.createOffer({ iceRestart: true });
-      await this.pc.setLocalDescription(offer);
-      socketService.emit('signal:offer', { to: this.remoteUserId, offer: this.pc.localDescription });
-    } else {
-      videoTracks.forEach((t) => (t.enabled = enabled));
+        await pc.setLocalDescription(await pc.createOffer());
+        socket.emit('webrtc:offer', { to: userId, sdp: pc.localDescription.toJSON() });
+        log('Offer sent to', userId);
+      } catch (err) {
+        warn('Create offer error:', err);
+      }
+    }
+
+    return pc;
+  }
+
+  async _restartIce(userId, pc, socket) {
+    try {
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      socket.emit('webrtc:offer', { to: userId, sdp: pc.localDescription.toJSON() });
+      log('ICE restart initiated for', userId);
+    } catch (err) {
+      warn('ICE restart failed:', err);
     }
   }
 
-  switchSpeaker(toSpeaker) {
-    if (this.remoteStream) {
-      const audio = document.querySelector('audio.remote-audio');
-      if (audio && audio.setSinkId) audio.setSinkId(toSpeaker ? 'speaker' : 'default').catch(() => {});
+  async _retryPeerConnection(userId, socket) {
+    const retries = this.negotiationRetries.get(userId) || 0;
+    if (retries >= MAX_NEGOTIATION_RETRIES) {
+      log('Max retries reached for', userId);
+      this._cleanupPeer(userId);
+      return;
+    }
+    this.negotiationRetries.set(userId, retries + 1);
+    log('Retrying peer connection for', userId, 'attempt', retries + 1);
+    this._cleanupPeer(userId);
+    await this.createPeerConnection(userId, socket, true);
+  }
+
+  async handleOffer(userId, sdp, socket) {
+    let pc = this.peerConnections.get(userId);
+    if (!pc) {
+      log('Creating PC for incoming offer from', userId);
+      pc = await this.createPeerConnection(userId, socket, false);
+    }
+
+    try {
+      if (pc.signalingState !== 'stable') {
+        log('Signaling state not stable for', userId, '-', pc.signalingState);
+        if (pc.signalingState === 'have-local-offer') {
+          if (sdp.type === 'offer' && pc.localDescription?.type === 'offer') {
+            const isPolite = !this._isInitiator(userId);
+            if (!isPolite) {
+              log('Collision - impolite peer received offer, ignoring');
+              return;
+            }
+            await pc.setLocalDescription({ type: 'rollback' });
+          } else {
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      log('Remote description set for', userId, '-', sdp.type);
+
+      if (sdp.type === 'offer') {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('webrtc:answer', { to: userId, sdp: pc.localDescription.toJSON() });
+        log('Answer sent to', userId);
+      }
+
+      const candidates = this.pendingCandidates.get(userId) || [];
+      if (candidates.length > 0) {
+        log('Flushing', candidates.length, 'pending ICE candidates for', userId);
+        this.pendingCandidates.set(userId, []);
+        for (const candidate of candidates) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            warn('Failed to add flushed candidate:', err.message);
+          }
+        }
+      }
+    } catch (err) {
+      warn('handleOffer error for', userId, ':', err.message);
     }
   }
 
-  get isCallActive() {
-    return this.pc !== null && this.pc.connectionState !== 'closed' && this.pc.connectionState !== 'disconnected' && this.pc.connectionState !== 'failed';
+  async handleAnswer(userId, sdp) {
+    const pc = this.peerConnections.get(userId);
+    if (!pc) {
+      warn('No PC for answer from', userId);
+      return;
+    }
+
+    try {
+      if (pc.signalingState !== 'have-local-offer') {
+        log('Ignoring answer for', userId, '- state:', pc.signalingState);
+        return;
+      }
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      log('Remote description set from answer for', userId);
+    } catch (err) {
+      warn('handleAnswer error:', err.message);
+    }
   }
 
-  bufferOffer(from, offer) { pendingOffers.set(from, { from, offer }); }
+  async handleIceCandidate(userId, candidate) {
+    const pc = this.peerConnections.get(userId);
+    if (!pc) {
+      log('Queuing ICE candidate for', userId, '- no PC yet');
+      const queue = this.pendingCandidates.get(userId) || [];
+      queue.push(candidate);
+      this.pendingCandidates.set(userId, queue);
+      return;
+    }
 
-  consumePendingOffer(userId) {
-    const offer = pendingOffers.get(userId);
-    if (offer) pendingOffers.delete(userId);
-    return offer;
+    if (!pc.remoteDescription) {
+      log('Queuing ICE candidate for', userId, '- no remote description');
+      const queue = this.pendingCandidates.get(userId) || [];
+      queue.push(candidate);
+      this.pendingCandidates.set(userId, queue);
+      return;
+    }
+
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      warn('addIceCandidate error for', userId, ':', err.message);
+    }
+  }
+
+  _isInitiator(userId) {
+    return this.isInitiatorMap.get(userId) === true;
+  }
+
+  _cleanupPeer(userId) {
+    const pc = this.peerConnections.get(userId);
+    if (pc) {
+      pc.close();
+      this.peerConnections.delete(userId);
+    }
+    this.isInitiatorMap.delete(userId);
+    this.pendingCandidates.delete(userId);
+    this.negotiationLocks.delete(userId);
+    this.negotiationRetries.delete(userId);
+
+    if (this._callbacks.onRemoteLeave) {
+      this._callbacks.onRemoteLeave(userId);
+    }
+    if (this._callbacks.onTrackCountChange) {
+      this._callbacks.onTrackCountChange();
+    }
+  }
+
+  toggleMic(enabled) {
+    if (this.localStream) {
+      this.localStream.getAudioTracks().forEach((t) => {
+        t.enabled = enabled;
+        log('Mic', enabled ? 'enabled' : 'disabled');
+      });
+    }
+  }
+
+  toggleCamera(enabled) {
+    if (this.localStream && !this.isAudioOnly) {
+      this.localStream.getVideoTracks().forEach((t) => {
+        t.enabled = enabled;
+        log('Camera', enabled ? 'enabled' : 'disabled');
+      });
+    }
+  }
+
+  async switchCamera() {
+    if (this.isAudioOnly || !this.localStream) return;
+    const videoTrack = this.localStream.getVideoTracks()[0];
+    if (!videoTrack) return;
+    const facingMode = videoTrack.getConstraints().facingMode === 'user' ? 'environment' : 'user';
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+      });
+      const newTrack = stream.getVideoTracks()[0];
+      this.replaceVideoTrack(newTrack);
+      log('Camera switched to', facingMode);
+    } catch (err) {
+      warn('Camera switch failed:', err.message);
+      throw err;
+    }
+  }
+
+  async startScreenShare() {
+    if (!this.localStream) return;
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = screenStream.getVideoTracks()[0];
+
+      screenTrack.onended = () => {
+        this.stopScreenShare().catch(() => {});
+      };
+
+      const videoSender = this._findVideoSender();
+      if (videoSender) {
+        await videoSender.replaceTrack(screenTrack);
+      }
+
+      this._screenTrackInfo = { track: screenTrack, stream: screenStream };
+      log('Screen sharing started');
+    } catch (err) {
+      warn('Screen share failed:', err.message);
+      throw err;
+    }
+  }
+
+  async stopScreenShare() {
+    if (!this._screenTrackInfo) return;
+    const { track } = this._screenTrackInfo;
+    track.stop();
+    this._screenTrackInfo = null;
+
+    try {
+      const cameraStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+      });
+      const newTrack = cameraStream.getVideoTracks()[0];
+      this.replaceVideoTrack(newTrack);
+      log('Screen share stopped, camera restored');
+    } catch (err) {
+      warn('Failed to restore camera:', err.message);
+    }
+  }
+
+  _findVideoSender() {
+    let sender = null;
+    this.peerConnections.forEach((pc) => {
+      const s = pc.getSenders().find((s) => s.track?.kind === 'video');
+      if (s) sender = s;
+    });
+    return sender;
+  }
+
+  getLocalVideoTrack() {
+    return this.localStream?.getVideoTracks()[0] || null;
   }
 
   cleanup() {
-    this.localStream?.getTracks().forEach((t) => t.stop());
-    if (this.pc) this.pc.close();
-    this.pc = null;
-    this.localStream = null;
-    this.remoteStream = null;
-    this.pendingCandidates = [];
-    this.pendingOffer = null;
-    this.activeCallInfo = null;
-    this.remoteUserId = null;
+    log('Cleaning up all peer connections');
+    this.peerConnections.forEach((pc) => pc.close());
+    this.peerConnections.clear();
+    this.isInitiatorMap.clear();
+    this.pendingCandidates.clear();
+    this.negotiationLocks.clear();
+    this.negotiationRetries.clear();
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((t) => t.stop());
+      this.localStream = null;
+    }
+
+    if (this._screenTrackInfo) {
+      this._screenTrackInfo.track.stop();
+      this._screenTrackInfo = null;
+    }
+
+    this.channel = null;
+    Object.keys(this._callbacks).forEach((key) => {
+      this._callbacks[key] = null;
+    });
+
+    log('Cleanup complete');
   }
 }
 

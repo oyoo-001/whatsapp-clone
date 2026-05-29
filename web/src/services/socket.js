@@ -21,9 +21,6 @@ class SocketService {
     this.socket.on('connect', () => {
       this._reconnectCallbacks.forEach((cb) => cb());
     });
-    this.listeners.forEach((handlers, event) => {
-      handlers.forEach((handler) => this.socket.on(event, handler));
-    });
   }
 
   disconnect() {

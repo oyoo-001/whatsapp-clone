@@ -1,4 +1,4 @@
-const { Message, User, Contact } = require('../models');
+const { Message, User, Contact, Broadcast, BroadcastRead } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 
 exports.sendMessage = async (req, res) => {
@@ -86,6 +86,48 @@ exports.getMessages = async (req, res) => {
     const { userId } = req.params;
     const { limit = 50, offset = 0, before } = req.query;
 
+    if (String(userId) === '0') {
+      const broadcastWhere = { isDeleted: false };
+      if (before) {
+        broadcastWhere.createdAt = { [Op.lt]: new Date(before) };
+      }
+
+      const broadcasts = await Broadcast.findAll({
+        where: broadcastWhere,
+        include: [
+          { model: User, as: 'sender', attributes: ['id', 'username', 'avatar'] },
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+      });
+
+      const messages = broadcasts.map(b => ({
+        id: `bc-${b.id}`,
+        senderId: 0,
+        receiverId: req.user.id,
+        content: b.content,
+        messageType: b.messageType,
+        fileUrl: b.fileUrl,
+        fileSize: b.fileSize,
+        mimeType: b.mimeType,
+        isBroadcast: true,
+        isDeleted: b.isDeleted,
+        isRead: true,
+        isDelivered: true,
+        isEdited: false,
+        isForwarded: false,
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+        sender: { id: 0, username: 'TuChat', avatar: null, status: 'TuChat Team, we value you' },
+        receiver: { id: req.user.id, username: req.user.username, avatar: req.user.avatar },
+      }));
+
+      const total = await Broadcast.count({ where: broadcastWhere });
+      res.json({ messages: messages.reverse(), total, hasMore: offset + messages.length < total });
+      return;
+    }
+
     const whereClause = {
       [Op.or]: [
         { senderId: req.user.id, receiverId: userId },
@@ -158,44 +200,102 @@ exports.getConversations = async (req, res) => {
     }
 
     const userIds = Array.from(conversationMap.keys());
-    const users = await User.findAll({
-      where: { id: { [Op.in]: userIds } },
-      attributes: ['id', 'username', 'phoneNumber', 'avatar', 'status', 'isOnline', 'lastSeen'],
+    const hasSystem = userIds.includes(0);
+    const realUserIds = userIds.filter(id => id !== 0);
+
+    let users = [];
+    if (realUserIds.length > 0) {
+      users = await User.findAll({
+        where: { id: { [Op.in]: realUserIds } },
+        attributes: ['id', 'username', 'phoneNumber', 'avatar', 'status', 'isOnline', 'lastSeen', 'isVerified'],
+      });
+    }
+
+    const latestBroadcast = await Broadcast.findOne({
+      where: { isDeleted: false },
+      order: [['createdAt', 'DESC']],
     });
+
+    if (latestBroadcast || hasSystem) {
+      users.push({
+        id: 0,
+        username: 'TuChat',
+        phoneNumber: null,
+        avatar: null,
+        status: 'TuChat Team, we value you',
+        isOnline: false,
+        lastSeen: null,
+        toJSON: function () {
+          return { id: 0, username: 'TuChat', phoneNumber: null, avatar: null, status: 'TuChat Team, we value you', isOnline: false, lastSeen: null };
+        },
+      });
+    }
+
+    const readBroadcastIds = await BroadcastRead.findAll({
+      where: { userId: req.user.id },
+      attributes: ['broadcastId'],
+      raw: true,
+    });
+    const readBroadcastIdSet = new Set(readBroadcastIds.map(r => r.broadcastId));
+    const totalBroadcasts = await Broadcast.count({ where: { isDeleted: false } });
 
     const conversations = await Promise.all(
       users.map(async (user) => {
-        const lastMessage = await Message.findOne({
-          where: {
-            [Op.or]: [
-              { senderId: req.user.id, receiverId: user.id },
-              { senderId: user.id, receiverId: req.user.id },
-            ],
-          },
-          order: [['createdAt', 'DESC']],
-          include: [
-            { model: User, as: 'sender', attributes: ['id', 'username'] },
-          ],
-        });
+        let lastMessage;
+        let unreadCount = 0;
+        let lastMessageAt = conversationMap.get(user.id);
 
-        const unreadCount = await Message.count({
-          where: {
-            senderId: user.id,
-            receiverId: req.user.id,
-            isRead: false,
-          },
-        });
+        if (user.id === 0) {
+          const bc = latestBroadcast;
+          if (bc) {
+            lastMessage = {
+              id: bc.id,
+              senderId: 0,
+              receiverId: req.user.id,
+              content: bc.content,
+              messageType: bc.messageType,
+              fileUrl: bc.fileUrl,
+              fileSize: bc.fileSize,
+              mimeType: bc.mimeType,
+              isBroadcast: true,
+              isDeleted: false,
+              createdAt: bc.createdAt,
+              sender: bc.sender || { id: 0, username: 'TuChat', status: 'TuChat Team, we value you' },
+            };
+          }
+          unreadCount = totalBroadcasts - readBroadcastIdSet.size;
+          if (unreadCount < 0) unreadCount = 0;
+          if (!lastMessageAt && bc) {
+            lastMessageAt = bc.createdAt;
+          }
+        } else {
+          lastMessage = await Message.findOne({
+            where: {
+              [Op.or]: [
+                { senderId: req.user.id, receiverId: user.id },
+                { senderId: user.id, receiverId: req.user.id },
+              ],
+            },
+            order: [['createdAt', 'DESC']],
+            include: [
+              { model: User, as: 'sender', attributes: ['id', 'username'] },
+            ],
+          });
+          unreadCount = await Message.count({
+            where: { senderId: user.id, receiverId: req.user.id, isRead: false },
+          });
+        }
 
         return {
           user: user.toJSON(),
           lastMessage,
           unreadCount,
-          lastMessageAt: conversationMap.get(user.id),
+          lastMessageAt,
         };
       })
     );
 
-    conversations.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+    conversations.sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
 
     res.json({ conversations });
   } catch (error) {
@@ -207,6 +307,22 @@ exports.getConversations = async (req, res) => {
 exports.markAsRead = async (req, res) => {
   try {
     const { userId } = req.params;
+
+    if (String(userId) === '0') {
+      const unreadBroadcasts = await Broadcast.findAll({
+        where: { isDeleted: false },
+      });
+      for (const bc of unreadBroadcasts) {
+        const existing = await BroadcastRead.findOne({
+          where: { broadcastId: bc.id, userId: req.user.id },
+        });
+        if (!existing) {
+          await BroadcastRead.create({ broadcastId: bc.id, userId: req.user.id, readAt: new Date() });
+        }
+      }
+      res.json({ message: 'Broadcasts marked as read' });
+      return;
+    }
 
     const updated = await Message.update(
       { isRead: true, isDelivered: true },
@@ -336,12 +452,18 @@ exports.deleteMessage = async (req, res) => {
     const { messageId } = req.params;
     const { mode } = req.query;
 
-    const message = await Message.findOne({
-      where: { id: messageId, senderId: req.user.id },
-    });
+    const message = await Message.findByPk(messageId);
 
     if (!message) {
-      return res.status(404).json({ error: 'Message not found or unauthorized' });
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.senderId === 0) {
+      if (!req.user.isAdmin) {
+        return res.status(403).json({ error: 'Only admins can delete broadcast messages' });
+      }
+    } else if (message.senderId !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
     }
 
     if (mode === 'me') {
@@ -393,5 +515,23 @@ exports.addReaction = async (req, res) => {
     res.json({ message: 'Reaction updated', reactions });
   } catch (error) {
     res.status(500).json({ error: 'Failed to add reaction' });
+  }
+};
+
+exports.deleteConversation = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    await Message.destroy({
+      where: {
+        [Op.or]: [
+          { senderId: req.user.id, receiverId: userId },
+          { senderId: userId, receiverId: req.user.id },
+        ],
+      },
+    });
+    res.json({ message: 'Conversation deleted' });
+  } catch (error) {
+    console.error('Delete conversation error:', error);
+    res.status(500).json({ error: 'Failed to delete conversation' });
   }
 };
