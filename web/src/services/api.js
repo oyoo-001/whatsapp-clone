@@ -105,7 +105,7 @@ export const getIceServers = () => api.get('/ice-servers');
 export const channelsAPI = {
   create: (data) => api.post("/channels", data),
   getMyChannels: () => api.get("/channels"),
-  getExploreChannels: () => api.get("/channels/explore"),
+  exploreChannels: (q, limit = 10) => api.get(`/channels/explore?q=${encodeURIComponent(q)}&limit=${limit}`),
   follow: (channelId) => api.post(`/channels/${channelId}/follow`),
   unfollow: (channelId) => api.delete(`/channels/${channelId}/follow`),
   getPosts: (channelId, page) => api.get(`/channels/${channelId}/posts?page=${page}`),

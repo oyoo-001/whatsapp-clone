@@ -326,7 +326,14 @@ exports.getChannelByInviteCode = async (req, res) => {
 
 exports.getExploreChannels = async (req, res) => {
   try {
+    const { q, limit } = req.query;
+    const where = {};
+    if (q && q.trim()) {
+      where.name = { [Op.like]: `%${q.trim()}%` };
+    }
+
     const channels = await Channel.findAll({
+      where: Object.keys(where).length ? where : undefined,
       include: [
         {
           model: User,
@@ -339,7 +346,8 @@ exports.getExploreChannels = async (req, res) => {
           attributes: ['userId'],
         },
       ],
-      order: [['createdAt', 'DESC']],
+      order: [['followerCount', 'DESC'], ['createdAt', 'DESC']],
+      limit: limit ? Math.min(parseInt(limit, 10) || 10, 50) : 10,
     });
 
     const enriched = channels.map(ch => ({

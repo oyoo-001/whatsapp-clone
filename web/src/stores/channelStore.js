@@ -22,7 +22,7 @@ const useChannelStore = create((set, get) => ({
   },
 
   followChannel: async (channelId) => {
-    await channelsAPI.followChannel(channelId);
+    await channelsAPI.follow(channelId);
     set((state) => ({
       channels: state.channels.map((ch) =>
         String(ch.id) === String(channelId)
@@ -33,7 +33,7 @@ const useChannelStore = create((set, get) => ({
   },
 
   unfollowChannel: async (channelId) => {
-    await channelsAPI.unfollowChannel(channelId);
+    await channelsAPI.unfollow(channelId);
     set((state) => ({
       channels: state.channels.map((ch) =>
         String(ch.id) === String(channelId)

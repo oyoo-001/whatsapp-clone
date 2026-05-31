@@ -46,6 +46,7 @@ import CreateGroupModal from "../components/CreateGroupModal";
 import CreateChannelModal from "../components/CreateChannelModal";
 import CreateStatusModal from "../components/CreateStatusModal";
 import StatusViewer from "../components/StatusViewer";
+import ChannelSearchModal from "../components/ChannelSearchModal";
 import { Colors } from "../styles/theme";
 import NotificationPopup from "../components/NotificationPopup";
 
@@ -64,6 +65,7 @@ const ChatListPage = () => {
   const [showCreateStatus, setShowCreateStatus] = useState(false);
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showChannelList, setShowChannelList] = useState(false);
+  const [showDiscover, setShowDiscover] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [activeStatusGroup, setActiveStatusGroup] = useState(null);
   const [statusIndex, setStatusIndex] = useState(0);
@@ -1490,8 +1492,20 @@ const ChatListPage = () => {
               <Plus size={18} />
               Create Channel
             </button>
+            <button onClick={() => { setShowChannelList(false); setShowDiscover(true); }} style={{
+              display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center',
+              marginTop: 6, padding: '10px 0', borderRadius: 12, border: `1px solid ${Colors.border}`,
+              background: 'none', cursor: 'pointer', color: Colors.textSecondary, fontWeight: 500, fontSize: 13,
+            }}>
+              <Search size={16} />
+              Discover Channels
+            </button>
           </div>
         </div>
+      )}
+
+      {showDiscover && (
+        <ChannelSearchModal onClose={() => setShowDiscover(false)} />
       )}
 
       {activeStatusGroup && (
