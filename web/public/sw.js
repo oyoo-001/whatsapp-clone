@@ -23,6 +23,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET') return;
+  if (url.hostname === 'res.cloudinary.com') return;
   if (url.pathname.startsWith('/@')) return;
   if (url.pathname.startsWith('/uploads')) return;
   if (url.pathname.startsWith('/socket.io')) return;
