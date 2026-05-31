@@ -24,6 +24,7 @@ const connectDB = async () => {
   try {
     await sequelize.authenticate();
     console.log('MySQL connected successfully');
+    // safe sync - no alter/force, adds only tables that don't exist
     await sequelize.sync();
     console.log('All models synchronized');
   } catch (error) {

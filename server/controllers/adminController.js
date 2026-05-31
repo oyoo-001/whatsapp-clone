@@ -329,6 +329,7 @@ exports.claimTicket = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`user-${ticket.userId}`).emit('admin:support-update', { ticketId: ticket.id, status: 'in_progress', adminId: req.user.id });
+      io.to(`ticket-${ticket.id}`).emit('support:ticket-status', { ticketId: ticket.id, status: 'in_progress', adminId: req.user.id });
       io.emit('admin:support-queue-update', { ticketId: ticket.id, status: 'in_progress', adminId: req.user.id });
     }
 
@@ -349,6 +350,7 @@ exports.resolveTicket = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`user-${ticket.userId}`).emit('admin:support-update', { ticketId: ticket.id, status: 'resolved' });
+      io.to(`ticket-${ticket.id}`).emit('support:ticket-status', { ticketId: ticket.id, status: 'resolved' });
       io.emit('admin:support-queue-update', { ticketId: ticket.id, status: 'resolved' });
     }
 
@@ -406,6 +408,7 @@ exports.sendSupportMessage = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`user-${ticket.userId}`).emit('support:new-message', { message: fullMessage, ticketId });
+      io.to(`ticket-${ticket.id}`).emit('support:new-message', { message: fullMessage, ticketId });
       io.to(`user-${req.user.id}`).emit('support:new-message', { message: fullMessage, ticketId });
     }
 

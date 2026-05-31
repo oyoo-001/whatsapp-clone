@@ -61,19 +61,15 @@ export const callsAPI = {
 };
 
 export const groupsAPI = {
-  createGroup: (data) => api.post('/groups', data),
-  getMyGroups: () => api.get('/groups'),
-  getGroup: (groupId) => api.get(`/groups/${groupId}`),
-  updateGroup: (groupId, data) => api.put(`/groups/${groupId}`, data),
-  updateAvatar: (groupId, data) => api.put(`/groups/${groupId}/avatar`, data),
-  addMembers: (groupId, data) => api.post(`/groups/${groupId}/members`, data),
-  addMember: (groupId, data) => api.post(`/groups/${groupId}/members/add`, data),
-  removeMember: (groupId, data) => api.delete(`/groups/${groupId}/members`, { data }),
-  updateMemberRole: (groupId, userId) => api.put(`/groups/${groupId}/members/${userId}/role`),
-  sendMessage: (groupId, data) => api.post(`/groups/${groupId}/messages`, data),
-  getMessages: (groupId, params) => api.get(`/groups/${groupId}/messages`, { params }),
-  deleteMessage: (groupId, data) => api.delete(`/groups/${groupId}/messages`, { data }),
-  markAsRead: (groupId) => api.put(`/groups/${groupId}/read`),
+  create: (data) => api.post("/groups", data),
+  getMyGroups: () => api.get("/groups"),
+  getGroup: (id) => api.get(`/groups/${id}`),
+  addMembers: (groupId, userIds) => api.post(`/groups/${groupId}/members`, { userIds }),
+  removeMember: (groupId, userId) => api.delete(`/groups/${groupId}/members/${userId}`),
+  generateInviteCode: (groupId) => api.post(`/groups/${groupId}/generate-invite`),
+  regenerateInviteCode: (groupId) => api.post(`/groups/${groupId}/regenerate-invite`),
+  joinByInvite: (code) => api.post("/groups/join", { inviteCode: code }),
+  getGroupByInviteCode: (code) => api.get(`/groups/invite/${code}`),
 };
 
 export const adminAPI = {
@@ -103,6 +99,35 @@ export const supportAPI = {
 };
 
 export const getIceServers = () => api.get('/ice-servers');
+
+export const channelsAPI = {
+  create: (data) => api.post("/channels", data),
+  getMyChannels: () => api.get("/channels"),
+  getExploreChannels: () => api.get("/channels/explore"),
+  follow: (channelId) => api.post(`/channels/${channelId}/follow`),
+  unfollow: (channelId) => api.delete(`/channels/${channelId}/follow`),
+  getPosts: (channelId, page) => api.get(`/channels/${channelId}/posts?page=${page}`),
+  createPost: (channelId, data) => api.post(`/channels/${channelId}/posts`, data),
+  deleteChannel: (channelId) => api.delete(`/channels/${channelId}`),
+  updateChannel: (channelId, data) => api.put(`/channels/${channelId}`, data),
+  getChannel: (channelId) => api.get(`/channels/${channelId}`),
+  joinByInvite: (code) => api.post("/channels/join", { inviteCode: code }),
+  regenerateInviteCode: (channelId) => api.post(`/channels/${channelId}/regenerate-invite`),
+  getChannelByInviteCode: (code) => api.get(`/channels/invite/${code}`),
+};
+
+export const statusAPI = {
+  createStatus: (data) => api.post('/status', data),
+  getFeed: () => api.get('/status/feed'),
+  getMyStatuses: () => api.get('/status/mine'),
+  viewStatus: (statusId) => api.post(`/status/${statusId}/view`),
+  getViewers: (statusId) => api.get(`/status/${statusId}/viewers`),
+  deleteStatus: (statusId) => api.delete(`/status/${statusId}`),
+};
+
+export const linksAPI = {
+  preview: (url) => api.post('/links/preview', { url }),
+};
 
 export const uploadAPI = {
   upload: (file, onProgress) => {

@@ -9,7 +9,12 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { RTCView } from 'react-native-webrtc';
+let RTCView = null;
+try {
+  RTCView = require('react-native-webrtc').RTCView;
+} catch (e) {
+  console.log('RTCView not available (Expo Go). Calls disabled.');
+}
 import { Colors, Fonts, Spacing, BorderRadius } from '../constants';
 import webrtcService from '../services/webrtc';
 import socketService from '../services/socket';
@@ -28,6 +33,11 @@ const CallScreen = ({ route, navigation }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
+    if (!webrtcService.isAvailable()) {
+      Alert.alert('Not Available', 'Voice/video calls require a development build (not available in Expo Go)');
+      navigation.goBack();
+      return;
+    }
     startCall();
     return () => {
       cleanup();

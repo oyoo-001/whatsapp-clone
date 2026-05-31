@@ -26,6 +26,11 @@ const Group = sequelize.define('Group', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  inviteCode: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    unique: true,
+  },
 }, {
   timestamps: true,
   tableName: 'Groups',

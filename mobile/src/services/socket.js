@@ -1,7 +1,9 @@
 import { io } from 'socket.io-client';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const SOCKET_URL = Platform.select({
+const EXTRA = Constants.expoConfig?.extra || {};
+const SOCKET_URL = EXTRA.socketUrl || Platform.select({
   android: 'http://10.0.2.2:5000',
   ios: 'http://localhost:5000',
   default: 'http://localhost:5000',

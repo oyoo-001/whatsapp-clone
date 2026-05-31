@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   User,
   Phone,
@@ -82,10 +82,12 @@ const RegisterPage = () => {
   const [detecting, setDetecting] = useState(true);
   const [showCodePicker, setShowCodePicker] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get("redirect") || "/";
   const toast = useToast();
 
   useEffect(() => {
-    if (isAuthenticated) navigate("/", { replace: true });
+    if (isAuthenticated) navigate(redirect, { replace: true });
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -146,7 +148,7 @@ const RegisterPage = () => {
       const m = "Account created! Welcome to TuChat.";
       setAlert({ type: "success", message: m });
       toast(m, "success", 3000);
-      setTimeout(() => navigate("/", { replace: true }), 1200);
+      setTimeout(() => navigate(redirect, { replace: true }), 1200);
     } catch (err) {
       const msg = err.response?.data?.error;
       const m =
@@ -432,7 +434,7 @@ const RegisterPage = () => {
         <p style={linkText}>
           Already have an account?{" "}
           <Link
-            to="/login"
+            to={`/login${redirect && redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}
             style={{
               color: Colors.primary,
               fontWeight: 700,

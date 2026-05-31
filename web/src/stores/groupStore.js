@@ -56,6 +56,13 @@ const useGroupStore = create((set, get) => ({
     }));
   },
 
+  exitGroup: async (groupId) => {
+    await groupsAPI.exitGroup(groupId);
+    set((state) => ({
+      groups: state.groups.filter((g) => String(g.id) !== String(groupId)),
+    }));
+  },
+
   getGroup: (groupId) => get().groups.find((g) => String(g.id) === String(groupId)),
 
   updateMemberRole: async (groupId, userId) => {

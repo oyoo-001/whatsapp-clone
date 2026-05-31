@@ -37,6 +37,8 @@ import VoiceRecorder from "../components/VoiceRecorder";
 import { playMessageSound } from "../services/notificationSound";
 import AlertDialog from "../components/AlertDialog";
 import { useToast } from "../components/Toast";
+import { renderTextWithLinks, extractUrls } from "../utils/links";
+import LinkPreview from "../components/LinkPreview";
 import { Colors } from "../styles/theme";
 
 const ChatPage = () => {
@@ -85,6 +87,7 @@ const ChatPage = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteMode, setDeleteMode] = useState("me");
   const [notifPopup, setNotifPopup] = useState(null);
+  const [userOnline, setUserOnline] = useState(chatUser?.isOnline || false);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const bottomRef = useRef(null);
@@ -278,11 +281,15 @@ const ChatPage = () => {
         removeMessage(`bc-${broadcastId}`);
       }
     });
+    const u5 = socketService.on("user:status", ({ userId, isOnline }) => {
+      if (userId === uid) setUserOnline(isOnline);
+    });
     return () => {
       u1();
       u2();
       u3();
       u4();
+      u5();
     };
   }, [uid]);
 
@@ -728,7 +735,7 @@ const ChatPage = () => {
                     <span style={{ animation: "pulse 1s ease infinite" }}>
                       typing...
                     </span>
-                  ) : chatUser.isOnline ? (
+                  ) : userOnline ? (
                     "online"
                   ) : chatUser.lastSeen ? (
                     `last seen ${formatLastSeen(chatUser.lastSeen)}`
@@ -963,7 +970,7 @@ const ChatPage = () => {
                 {chatUser.status || "Hey there! I am using TuChat"}
               </p>
               <p style={{ fontSize: 11, color: Colors.textHint, marginTop: 2 }}>
-                {chatUser.isOnline
+                {userOnline
                   ? "Online"
                   : chatUser.lastSeen
                     ? `Last seen ${formatLastSeen(chatUser.lastSeen)}`
@@ -1138,57 +1145,58 @@ const ChatPage = () => {
                     <div
                       style={{
                         display: "flex",
-                        justifyContent: "center",
-                        margin: "8px 0",
+                        justifyContent: "flex-start",
+                        margin: "12px 0",
+                        paddingLeft: 8,
                       }}
                     >
                       <div
                         style={{
-                          background: "#F0F4F8",
-                          borderRadius: 12,
-                          padding: "12px 16px",
-                          maxWidth: "85%",
-                          textAlign: "center",
+                          background: "#E8F0FE",
+                          borderRadius: "16px 16px 16px 4px",
+                          padding: "16px 20px",
+                          maxWidth: "90%",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
                         }}
                       >
                         <div
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "center",
-                            gap: 4,
-                            marginBottom: 4,
+                            gap: 6,
+                            marginBottom: 8,
                           }}
                         >
-                          <Verified size={14} color={Colors.accent} />
-                          <span style={{ fontSize: 11, color: Colors.accent, fontWeight: 600 }}>
-                            TuChat
+                          <Verified size={18} color={Colors.accent} />
+                          <span style={{ fontSize: 14, color: Colors.accent, fontWeight: 700 }}>
+                            TuChat Broadcast
                           </span>
                         </div>
                         {msg.content && (
-                          <div style={{ fontSize: 14, color: Colors.textPrimary, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                            {msg.content}
+                          <div style={{ fontSize: 16, color: Colors.textPrimary, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.5 }}>
+                            {renderTextWithLinks(msg.content)}
+                            {(() => { const u = extractUrls(msg.content); return u.length > 0 ? <LinkPreview url={u[0]} /> : null; })()}
                           </div>
                         )}
                         {msg.fileUrl && (
-                          <div style={{ marginTop: msg.content ? 8 : 0 }}>
+                          <div style={{ marginTop: msg.content ? 12 : 0 }}>
                             {msg.mimeType?.startsWith("image/") ? (
-                              <img src={msg.fileUrl} alt="broadcast" style={{ maxWidth: "100%", maxHeight: 250, borderRadius: 8, objectFit: "contain" }} />
+                              <img src={msg.fileUrl} alt="broadcast" style={{ maxWidth: "100%", maxHeight: 300, borderRadius: 10, objectFit: "contain" }} />
                             ) : msg.mimeType?.startsWith("video/") ? (
-                              <video src={msg.fileUrl} controls style={{ maxWidth: "100%", maxHeight: 250, borderRadius: 8 }} />
+                              <video src={msg.fileUrl} controls style={{ maxWidth: "100%", maxHeight: 300, borderRadius: 10 }} />
                             ) : msg.mimeType?.startsWith("audio/") ? (
                               <audio src={msg.fileUrl} controls style={{ width: "100%" }} />
                             ) : (
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 8, background: "#E8ECF0", borderRadius: 8 }}>
-                                <FileText size={18} color={Colors.textSecondary} />
-                                <a href={msg.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: Colors.accent, textDecoration: "none" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, background: "#DCE8F5", borderRadius: 10 }}>
+                                <FileText size={22} color={Colors.textSecondary} />
+                                <a href={msg.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: Colors.accent, textDecoration: "none", fontWeight: 500 }}>
                                   View File
                                 </a>
                               </div>
                             )}
                           </div>
                         )}
-                        <div style={{ fontSize: 11, color: Colors.textHint, marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: Colors.textHint, marginTop: 6, textAlign: "right" }}>
                           {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </div>

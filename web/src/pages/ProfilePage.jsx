@@ -133,6 +133,30 @@ const ProfilePage = () => {
           ) : (
             user?.username?.charAt(0).toUpperCase() || "?"
           )}
+          {uploading && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(0,0,0,0.4)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "50%",
+              }}
+            >
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  border: "3px solid rgba(255,255,255,0.3)",
+                  borderTop: "3px solid white",
+                  borderRadius: "50%",
+                  animation: "spin 0.7s linear infinite",
+                }}
+              />
+            </div>
+          )}
           <input
             ref={avatarInputRef}
             type="file"

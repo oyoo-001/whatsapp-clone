@@ -16,8 +16,12 @@ import CallLogsPage from './pages/CallLogsPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
 import GroupChatPage from './pages/GroupChatPage';
+import ChannelPage from './pages/ChannelPage';
 import AdminPage from './pages/AdminPage';
 import SupportChatPage from './pages/SupportChatPage';
+import InvitePage from './pages/InvitePage';
+import InvitePreviewModal from './components/InvitePreviewModal';
+import BannedSupportPage from './pages/BannedSupportPage';
 import LoadingPage from './pages/LoadingPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import './styles/global.css';
@@ -52,9 +56,12 @@ const App = () => {
   return (
     <ToastProvider>
       <BrowserRouter>
+        <InvitePreviewModal />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/channel/invite/:code" element={<InvitePage />} />
+          <Route path="/group/invite/:code" element={<InvitePage />} />
           <Route path="/" element={<ProtectedRoute><ChatListPage /></ProtectedRoute>} />
           <Route path="/chat/:userId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
@@ -65,8 +72,10 @@ const App = () => {
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
           <Route path="/group-chat/:groupId" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
+          <Route path="/channels/:channelId" element={<ProtectedRoute><ChannelPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           <Route path="/support-chat" element={<ProtectedRoute><SupportChatPage /></ProtectedRoute>} />
+          <Route path="/banned-support" element={<BannedSupportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

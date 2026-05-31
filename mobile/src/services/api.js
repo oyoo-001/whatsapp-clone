@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const BASE_URL = Platform.select({
+const EXTRA = Constants.expoConfig?.extra || {};
+const BASE_URL = EXTRA.apiUrl || Platform.select({
   android: 'http://10.0.2.2:5000/api',
   ios: 'http://localhost:5000/api',
   default: 'http://localhost:5000/api',

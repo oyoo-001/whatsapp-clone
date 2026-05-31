@@ -1,0 +1,89 @@
+const { sequelize } = require('./config/database');
+
+const requiredColumns = {
+  Users: [
+    { name: 'loginAttempts', type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'lockoutUntil', type: 'DATETIME NULL DEFAULT NULL' },
+    { name: 'isVerified', type: 'TINYINT(1) NOT NULL DEFAULT 0' },
+  ],
+  SupportTickets: [
+    { name: 'contactPhone', type: 'VARCHAR(20) NULL DEFAULT NULL' },
+    { name: 'isBannedRequest', type: 'TINYINT(1) NOT NULL DEFAULT 0' },
+  ],
+};
+
+const addMissingColumns = async () => {
+  let added = 0;
+  for (const [table, columns] of Object.entries(requiredColumns)) {
+    let tableExists = true;
+    let existingColumns;
+    try {
+      [existingColumns] = await sequelize.query(`SHOW COLUMNS FROM \`${table}\``);
+    } catch (err) {
+      if (err.message.includes("doesn't exist")) {
+        tableExists = false;
+      } else {
+        console.error(`Error reading ${table}:`, err.message);
+      }
+      continue;
+    }
+    if (!tableExists) continue;
+
+    const existingNames = new Set(existingColumns.map(r => r.Field));
+    for (const col of columns) {
+      if (!existingNames.has(col.name)) {
+        try {
+          await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${col.name}\` ${col.type}`);
+          console.log(`Added column ${table}.${col.name}`);
+          added++;
+        } catch (err) {
+          console.error(`Failed to add ${table}.${col.name}:`, err.message);
+        }
+      }
+    }
+  }
+  return added;
+};
+
+const removeDuplicateIndexes = async () => {
+  let removed = 0;
+  try {
+    const [tables] = await sequelize.query(
+      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?",
+      { replacements: [process.env.DB_NAME] }
+    );
+    for (const { TABLE_NAME } of tables) {
+      const [indexes] = await sequelize.query(`SHOW INDEXES FROM \`${TABLE_NAME}\``);
+      const copyIndexes = new Set();
+      for (const idx of indexes) {
+        const key = idx.Key_name;
+        if (/_copy_\d+$/.test(key)) {
+          copyIndexes.add(key);
+        }
+      }
+      for (const key of copyIndexes) {
+        try {
+          await sequelize.query(`DROP INDEX \`${key}\` ON \`${TABLE_NAME}\``);
+          console.log(`Dropped duplicate index ${TABLE_NAME}.${key}`);
+          removed++;
+        } catch (err) {
+          console.error(`Failed to drop ${TABLE_NAME}.${key}:`, err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error checking duplicate indexes:', err.message);
+  }
+  return removed;
+};
+
+const runMigrations = async () => {
+  console.log('Running safe migrations...');
+  const removed = await removeDuplicateIndexes();
+  if (removed > 0) console.log(`Cleaned ${removed} duplicate index(es)`);
+  const added = await addMissingColumns();
+  if (added > 0) console.log(`Added ${added} missing column(s)`);
+  if (removed === 0 && added === 0) console.log('Schema is up to date');
+};
+
+module.exports = { runMigrations };

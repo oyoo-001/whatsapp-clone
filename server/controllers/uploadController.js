@@ -1,63 +1,163 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const { v4: uuidv4 } = require('uuid');
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const ALLOWED_MIMES = [
+  'image/jpeg', 'image/png', 'image/gif',
+  'video/mp4',
+  'audio/mpeg', 'audio/ogg', 'audio/webm',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+];
+
+const MAGIC_BYTES = {
+  'image/jpeg': [[0xFF, 0xD8, 0xFF]],
+  'image/png': [[0x89, 0x50, 0x4E, 0x47]],
+  'image/gif': [[0x47, 0x49, 0x46]],
+  'video/mp4': [[0x00, 0x00, 0x00], [0x66, 0x74, 0x79, 0x70]],
+  'audio/mpeg': [[0xFF, 0xFB], [0xFF, 0xF3], [0xFF, 0xF2]],
+  'audio/ogg': [[0x4F, 0x67, 0x67, 0x53]],
+  'audio/webm': [[0x1A, 0x45, 0xDF, 0xA3]],
+  'application/pdf': [[0x25, 0x50, 0x44, 0x46]],
+};
+
+const validateMagicBytes = (filePath, mimeType) => {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(8);
+    fs.readSync(fd, buffer, 0, 8, 0);
+    fs.closeSync(fd);
+
+    const signatures = MAGIC_BYTES[mimeType];
+    if (!signatures) return true;
+
+    return signatures.some(sig => {
+      return sig.every((byte, i) => buffer[i] === byte);
+    });
+  } catch {
+    return false;
+  }
+};
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '..', 'uploads'));
-  },
+  destination: os.tmpdir(),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(file.originalname).toLowerCase();
     cb(null, `${uuidv4()}${ext}`);
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = /jpeg|jpg|png|gif|mp4|mp3|ogg|webm|pdf|doc|docx|txt/;
-    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-    const mime = allowed.test(file.mimetype.split('/')[1]);
-    if (ext || mime) {
-      cb(null, true);
-    } else {
-      cb(new Error('File type not allowed'));
+    if (!ALLOWED_MIMES.includes(file.mimetype)) {
+      return cb(new Error('File type not allowed'));
     }
+    cb(null, true);
   },
 });
 
-exports.uploadFile = (req, res) => {
-  upload.single('file')(req, res, (err) => {
+const uploadToCloudinary = (filePath, folder) => {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.upload(
+      filePath,
+      {
+        folder: folder || 'whatsapp-clone',
+        resource_type: 'auto',
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      }
+    );
+  });
+};
+
+exports.uploadFile = async (req, res) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 10MB.' });
+      }
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    res.json({
-      fileUrl: `/uploads/${req.file.filename}`,
-      fileName: req.file.originalname,
-      fileSize: req.file.size,
-      mimeType: req.file.mimetype,
-    });
+
+    if (!validateMagicBytes(req.file.path, req.file.mimetype)) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Invalid file content' });
+    }
+
+    try {
+      const result = await uploadToCloudinary(req.file.path);
+      fs.unlink(req.file.path, () => {});
+
+      res.json({
+        fileUrl: result.secure_url,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        publicId: result.public_id,
+      });
+    } catch (uploadErr) {
+      console.error('Cloudinary upload error:', uploadErr.message, uploadErr.http_code, uploadErr);
+      fs.unlink(req.file.path, () => {});
+      res.status(500).json({ error: `Upload failed: ${uploadErr.message}` });
+    }
   });
 };
 
-exports.uploadMultiple = (req, res) => {
-  upload.array('files', 10)(req, res, (err) => {
+exports.uploadMultiple = async (req, res) => {
+  upload.array('files', 10)(req, res, async (err) => {
     if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 10MB.' });
+      }
       return res.status(400).json({ error: err.message });
     }
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
     }
-    const files = req.files.map((f) => ({
-      fileUrl: `/uploads/${f.filename}`,
-      fileName: f.originalname,
-      fileSize: f.size,
-      mimeType: f.mimetype,
-    }));
-    res.json({ files });
+
+    const results = [];
+    for (const f of req.files) {
+      if (!validateMagicBytes(f.path, f.mimetype)) {
+        fs.unlink(f.path, () => {});
+        continue;
+      }
+      try {
+        const result = await uploadToCloudinary(f.path);
+        results.push({
+          fileUrl: result.secure_url,
+          fileName: f.originalname,
+          fileSize: f.size,
+          mimeType: f.mimetype,
+          publicId: result.public_id,
+        });
+      } catch (uploadErr) {
+        console.error('Cloudinary upload error (multi):', uploadErr.message);
+      }
+      fs.unlink(f.path, () => {});
+    }
+
+    if (results.length === 0) {
+      return res.status(400).json({ error: 'No valid files uploaded' });
+    }
+
+    res.json({ files: results });
   });
 };

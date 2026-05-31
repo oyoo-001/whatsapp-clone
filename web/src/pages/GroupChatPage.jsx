@@ -2,14 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Video, Users, Send, Settings, X, Check, CheckCheck,
-  UserPlus, Trash2, Camera, Edit3, Shield, Info,
+  UserPlus, Trash2, Camera, Edit3, Shield, Info, LogOut,
   Paperclip, Smile, Mic, FileText, Image, ZoomIn, ZoomOut,
-  Reply, XCircle, Forward,
+  Reply, XCircle, Forward, Link, Copy, Share2,
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import useContactStore from '../stores/contactStore';
 import useGroupStore from '../stores/groupStore';
 import { uploadAPI, groupsAPI } from '../services/api';
+import { renderTextWithLinks, extractUrls } from '../utils/links';
+import LinkPreview from '../components/LinkPreview';
 import { Colors } from '../styles/theme';
 import EmojiPicker from '../components/EmojiPicker';
 import VoiceRecorder from '../components/VoiceRecorder';
@@ -41,7 +43,7 @@ const GroupChatPage = () => {
   const { user: currentUser } = useAuthStore();
   const {
     getGroup, fetchGroups, getMessages, fetchMessages, addMessage,
-    addMembers, removeMember, updateMemberRole, updateGroup, updateAvatar, deleteMessage,
+    addMembers, removeMember, exitGroup, updateMemberRole, updateGroup, updateAvatar, deleteMessage,
     receiveMessage, removeMessage, markAsRead,
   } = useGroupStore();
   const { contacts, fetchContacts } = useContactStore();
@@ -131,7 +133,20 @@ const GroupChatPage = () => {
       });
     });
 
-    return () => { unsubMsg(); unsubDel(); unsubTyping(); };
+    const unsubGrpUpd = socketService.on('group:updated', ({ groupId: gId }) => {
+      if (String(gId) !== String(groupId)) return;
+      fetchGroups();
+    });
+    const unsubAvatarUpd = socketService.on('group:avatar-updated', ({ groupId: gId }) => {
+      if (String(gId) !== String(groupId)) return;
+      fetchGroups();
+    });
+    const unsubRoleUpd = socketService.on('group:member-role-updated', ({ groupId: gId }) => {
+      if (String(gId) !== String(groupId)) return;
+      fetchGroups();
+    });
+
+    return () => { unsubMsg(); unsubDel(); unsubTyping(); unsubGrpUpd(); unsubAvatarUpd(); unsubRoleUpd(); };
   }, [groupId]);
 
   useEffect(() => {
@@ -245,11 +260,23 @@ const GroupChatPage = () => {
     setAddingMembers(false);
   };
 
+  const handleExitGroup = async () => {
+    try {
+      await exitGroup(groupId);
+      navigate('/');
+    } catch {
+      alert('Failed to exit group');
+    }
+  };
+
   const handleRemoveMember = async (userId) => {
     if (!isAdmin) return;
+    if (!window.confirm('Remove this member?')) return;
     try {
       await removeMember(groupId, userId);
-    } catch {}
+    } catch {
+      alert('Failed to remove member');
+    }
   };
 
   const handleMakeAdmin = async (userId) => {
@@ -284,6 +311,50 @@ const GroupChatPage = () => {
     } catch {}
     setUploadingAvatar(false);
   };
+
+  const [inviteCode, setInviteCode] = useState(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  const handleGenerateInvite = async () => {
+    try {
+      const { data } = await groupsAPI.generateInvite(groupId);
+      setInviteCode(data.inviteCode);
+    } catch {}
+  };
+
+  const handleCopyInvite = () => {
+    const link = `${window.location.origin}/group/invite/${inviteCode}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    }).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = link;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    });
+  };
+
+  const handleShareInvite = () => {
+    const link = `${window.location.origin}/group/invite/${inviteCode}`;
+    if (navigator.share) {
+      navigator.share({ title: group.name, text: `Join "${group.name}" on TuChat`, url: link }).catch(() => {});
+    } else {
+      handleCopyInvite();
+    }
+  };
+
+  useEffect(() => {
+    if (showSettings && group?.inviteCode) {
+      setInviteCode(group.inviteCode);
+    } else if (showSettings && !inviteCode) {
+      handleGenerateInvite();
+    }
+  }, [showSettings]);
 
   const handleDeleteMessage = async (messageId) => {
     if (!isAdmin) return;
@@ -366,7 +437,7 @@ const GroupChatPage = () => {
           <img src={msg.fileUrl} alt="Image" onClick={() => { setPreviewMsg(msg); setZoom(1); }}
             style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 6, display: 'block', cursor: 'pointer', objectFit: 'cover' }} />
           {msg.content && msg.content !== msg.fileUrl && (
-            <div style={{ fontSize: 13, color: isMine ? Colors.white : Colors.textPrimary, padding: '2px 10px 6px' }}>{msg.content}</div>
+            <div style={{ fontSize: 13, color: isMine ? Colors.white : Colors.textPrimary, padding: '2px 10px 6px' }}>{renderTextWithLinks(msg.content)}{(() => { const u = extractUrls(msg.content); return u.length > 0 ? <LinkPreview url={u[0]} /> : null; })()}</div>
           )}
         </>
       );
@@ -411,6 +482,19 @@ const GroupChatPage = () => {
           </div>
         </a>
       );
+    }
+    if (msg.content) {
+      const urls = extractUrls(msg.content);
+      if (urls.length > 0) {
+        return (
+          <div>
+            <p style={{ margin: 0, fontSize: 14, color: Colors.textPrimary, lineHeight: 1.4, wordBreak: 'break-word' }}>
+              {renderTextWithLinks(msg.content)}
+            </p>
+            <LinkPreview url={urls[0]} />
+          </div>
+        );
+      }
     }
     return <p style={{ margin: 0, fontSize: 14, color: Colors.textPrimary, lineHeight: 1.4, wordBreak: 'break-word' }}>{msg.content}</p>;
   };
@@ -502,6 +586,10 @@ const GroupChatPage = () => {
                   <Settings size={18} color={Colors.textSecondary} /> Settings
                 </button>
               )}
+              <hr style={{ border: 'none', borderTop: '1px solid #F0F2F5', margin: '4px 0' }} />
+              <button onClick={() => handleExitGroup()} style={{ ...menuItem, color: '#E53935' }}>
+                <LogOut size={18} /> Exit Group
+              </button>
             </div>
           )}
         </div>
@@ -651,8 +739,12 @@ const GroupChatPage = () => {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Change Photo */}
-              <button onClick={() => avatarInputRef.current?.click()} disabled={uploadingAvatar} style={settingsBtn}>
-                <Camera size={18} color={Colors.textHint} />
+              <button onClick={() => avatarInputRef.current?.click()} disabled={uploadingAvatar} style={{ ...settingsBtn, opacity: uploadingAvatar ? 0.7 : 1 }}>
+                {uploadingAvatar ? (
+                  <span style={{ width: 16, height: 16, border: '2px solid #ddd', borderTopColor: Colors.primary, borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+                ) : (
+                  <Camera size={18} color={Colors.textHint} />
+                )}
                 <span style={{ fontSize: 14, color: Colors.textPrimary }}>
                   {uploadingAvatar ? 'Uploading...' : 'Change Group Photo'}
                 </span>
@@ -711,6 +803,38 @@ const GroupChatPage = () => {
                   </span>
                 </button>
               )}
+
+              {/* Invite Link */}
+              <div style={{ padding: '10px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <Link size={18} color={Colors.textHint} />
+                  <span style={{ fontSize: 14, color: Colors.textPrimary, fontWeight: 600 }}>Invite Link</span>
+                </div>
+                {inviteCode ? (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 14px', background: '#F0F8FF', borderRadius: 10,
+                  }}>
+                    <span style={{
+                      flex: 1, fontSize: 12, color: Colors.textSecondary, overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {window.location.origin}/group/invite/{inviteCode}
+                    </span>
+                    <button onClick={handleCopyInvite} style={{ background: 'none', border: 'none', cursor: 'pointer', color: inviteCopied ? Colors.secondary : Colors.textHint, display: 'flex', padding: 4 }}>
+                      {inviteCopied ? <Check size={16} /> : <Copy size={16} />}
+                    </button>
+                    <button onClick={handleShareInvite} style={{ background: 'none', border: 'none', cursor: 'pointer', color: Colors.textHint, display: 'flex', padding: 4 }}>
+                      <Share2 size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={handleGenerateInvite} style={settingsBtn}>
+                    <Link size={18} color={Colors.textHint} />
+                    <span style={{ fontSize: 14, color: Colors.accent }}>Generate Invite Link</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

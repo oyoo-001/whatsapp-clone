@@ -467,21 +467,17 @@ exports.deleteMessage = async (req, res) => {
     }
 
     if (mode === 'me') {
-      message.content = null;
-      message.fileUrl = null;
-      message.messageType = 'text';
-      message.isDeleted = true;
-      await message.save();
-    } else {
-      await message.destroy();
+      return res.json({ message: 'Message deleted locally' });
     }
+
+    await message.destroy();
 
     const io = req.app.get('io');
     if (io) {
       const connectedUsers = require('../socket/index').connectedUsers;
       const targetSocket = connectedUsers.get(message.receiverId);
       if (targetSocket) {
-        io.to(targetSocket).emit('chat:deleted', { messageId: message.id, mode: mode || 'all' });
+        io.to(targetSocket).emit('chat:deleted', { messageId: message.id, mode: 'all' });
       }
     }
 

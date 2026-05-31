@@ -20,11 +20,18 @@ import {
   Shield,
   Trash2,
   Archive,
+  MessageSquare,
+  X,
+  Radio,
+  Circle,
 } from "lucide-react";
 import useAuthStore from "../stores/authStore";
 import useChatStore from "../stores/chatStore";
 import useGroupStore from "../stores/groupStore";
+import useChannelStore from "../stores/channelStore";
+import useStatusStore from "../stores/statusStore";
 import socketService from "../services/socket";
+import { supportAPI } from "../services/api";
 import { playMessageSound } from "../services/notificationSound";
 import {
   updateBadge,
@@ -35,10 +42,13 @@ import {
 import NewChatModal from "../components/NewChatModal";
 import AddContactModal from "../components/AddContactModal";
 import CreateGroupModal from "../components/CreateGroupModal";
+import CreateChannelModal from "../components/CreateChannelModal";
+import CreateStatusModal from "../components/CreateStatusModal";
+import StatusViewer from "../components/StatusViewer";
 import { Colors } from "../styles/theme";
 import NotificationPopup from "../components/NotificationPopup";
 
-const TABS = ["All", "Unread"];
+const BASE_TABS = ["All", "Unread"];
 
 const ChatListPage = () => {
   const { logout, user } = useAuthStore();
@@ -48,8 +58,13 @@ const ChatListPage = () => {
   const [showNewChat, setShowNewChat] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [showCreateStatus, setShowCreateStatus] = useState(false);
   const [showFabMenu, setShowFabMenu] = useState(false);
+  const [showChannelList, setShowChannelList] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [activeStatusGroup, setActiveStatusGroup] = useState(null);
+  const [statusIndex, setStatusIndex] = useState(0);
   const [typingUsers, setTypingUsers] = useState({});
   const [notifPopup, setNotifPopup] = useState(null);
   const [pinPrompt, setPinPrompt] = useState(null);
@@ -57,6 +72,9 @@ const ChatListPage = () => {
   const [pinError, setPinError] = useState("");
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [contextMenu, setContextMenu] = useState(null);
+  const [activeTicket, setActiveTicket] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [ticketUnread, setTicketUnread] = useState(false);
   const typingTimers = useRef({});
   const navigate = useNavigate();
 
@@ -72,10 +90,33 @@ const ChatListPage = () => {
     }
   };
 
+  const getArchivedGroupIds = () => JSON.parse(localStorage.getItem('archivedGroups') || '[]');
+  const setArchivedGroupIds = (ids) => localStorage.setItem('archivedGroups', JSON.stringify(ids));
+  const isGroupArchived = (groupId) => getArchivedGroupIds().includes(String(groupId));
+  const toggleGroupArchive = (groupId) => {
+    const ids = getArchivedGroupIds();
+    const gid = String(groupId);
+    if (ids.includes(gid)) {
+      setArchivedGroupIds(ids.filter(id => id !== gid));
+    } else {
+      setArchivedGroupIds([...ids, gid]);
+    }
+  };
+
   useEffect(() => {
     requestNotificationPermission();
     fetchConversations();
     fetchGroups();
+    useChannelStore.getState().fetchChannels();
+    useStatusStore.getState().fetchStatusFeed();
+    (async () => {
+      try {
+        const { data } = await supportAPI.getMyTicket();
+        if (data?.ticket) {
+          setActiveTicket(data.ticket);
+        }
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -83,6 +124,12 @@ const ChatListPage = () => {
     window.addEventListener('click', handleClick);
     return () => window.removeEventListener('click', handleClick);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "Support" && !activeTicket) {
+      setActiveTab("All");
+    }
+  }, [activeTicket, activeTab]);
 
   useEffect(() => {
     const processPending = () =>
@@ -169,6 +216,17 @@ const ChatListPage = () => {
     const u8 = socketService.on("broadcast:deleted", () => {
       useChatStore.getState().fetchConversations(true);
     });
+    const u9 = socketService.on("support:new-message", () => {
+      setTicketUnread(true);
+      supportAPI.getMyTicket().then(({ data }) => {
+        if (data?.ticket) setActiveTicket(data.ticket);
+      }).catch(() => {});
+    });
+    const u10 = socketService.on("admin:support-update", () => {
+      supportAPI.getMyTicket().then(({ data }) => {
+        if (data?.ticket) setActiveTicket(data.ticket);
+      }).catch(() => {});
+    });
     const u6 = socketService.on("group:message", ({ groupId, message }) => {
       useGroupStore.getState().receiveMessage(groupId, message);
       const { user: cu } = useAuthStore.getState();
@@ -189,6 +247,27 @@ const ChatListPage = () => {
         });
       }
     });
+    const u11 = socketService.on("user:status", ({ userId, isOnline }) => {
+      useChatStore.getState().updateUserStatus(userId, isOnline);
+    });
+    const u12 = socketService.on("user:updated", ({ userId }) => {
+      if (userId) useChatStore.getState().fetchConversations(true);
+    });
+    const u13 = socketService.on("group:updated", () => {
+      useGroupStore.getState().fetchGroups();
+    });
+    const u14 = socketService.on("group:avatar-updated", () => {
+      useGroupStore.getState().fetchGroups();
+    });
+    const u15 = socketService.on("status:new", () => {
+      useStatusStore.getState().fetchStatusFeed();
+    });
+    const u16 = socketService.on("status:deleted", () => {
+      useStatusStore.getState().fetchStatusFeed();
+    });
+    const u17 = socketService.on("channel:created", () => {
+      useChannelStore.getState().fetchChannels();
+    });
     return () => {
       u1();
       u2();
@@ -198,6 +277,15 @@ const ChatListPage = () => {
       u6();
       u7();
       u8();
+      u9();
+      u10();
+      u11();
+      u12();
+      u13();
+      u14();
+      u15();
+      u16();
+      u17();
     };
   }, []);
 
@@ -223,6 +311,27 @@ const ChatListPage = () => {
     else clearBadge();
   }, [totalUnread]);
 
+  const archivedCount = useMemo(() => {
+    const convArchived = conversations.filter(c => isArchived(c.user.id)).length;
+    const groupArchived = sortedGroups.filter(g => isGroupArchived(g.id)).length;
+    return convArchived + groupArchived;
+  }, [conversations, sortedGroups]);
+
+  const groupsWithUnread = useMemo(() => {
+    return sortedGroups.filter((g) => {
+      const m = g.participants?.find((p) => String(p.id) === String(currentUser?.id));
+      return (m?.GroupMember?.unreadCount || 0) > 0;
+    }).length;
+  }, [sortedGroups, currentUser]);
+
+  const tabs = useMemo(() => {
+    const t = [...BASE_TABS];
+    if (archivedCount > 0) t.push(`Archived (${archivedCount})`);
+    if (sortedGroups.length > 0) t.push(groupsWithUnread > 0 ? `Groups (${groupsWithUnread})` : "Groups");
+    if (activeTicket) t.push("Support");
+    return t;
+  }, [activeTicket, archivedCount, sortedGroups.length, groupsWithUnread]);
+
   const allItems = useMemo(() => {
     const convItems = conversations.map((c) => ({
       ...c,
@@ -242,16 +351,25 @@ const ChatListPage = () => {
     });
   }, [conversations, sortedGroups]);
 
+  const isOnArchivedTab = activeTab.startsWith("Archived");
+  const isOnGroupsTab = activeTab.startsWith("Groups");
   const filtered = allItems.filter((item) => {
     if (item._type === "group") {
       const s = item.group.name.toLowerCase().includes(search.toLowerCase());
+      const groupArchived = isGroupArchived(item.group.id);
       if (activeTab === "Unread") return false;
+      if (isOnGroupsTab) return s && !groupArchived;
+      if (isOnArchivedTab) return groupArchived && s;
+      if (groupArchived) return false;
       return s;
     }
     const c = item;
     const s = c.user.username.toLowerCase().includes(search.toLowerCase());
+    const archived = isArchived(c.user.id);
+    if (isOnGroupsTab) return false;
+    if (isOnArchivedTab) return archived && s;
     if (activeTab === "Unread") return s && c.unreadCount > 0;
-    if (!search && isArchived(c.user.id)) return false;
+    if (archived) return false;
     return s;
   });
 
@@ -456,6 +574,22 @@ const ChatListPage = () => {
               },
             },
             {
+              icon: Circle,
+              label: "Create Status",
+              onClick: () => {
+                setShowCreateStatus(true);
+                setShowMenu(false);
+              },
+            },
+            {
+              icon: Radio,
+              label: "My Channel",
+              onClick: () => {
+                setShowMenu(false);
+                setShowChannelList(true);
+              },
+            },
+            {
               icon: Settings,
               label: "Settings",
               onClick: () => {
@@ -515,6 +649,89 @@ const ChatListPage = () => {
         </div>
       )}
 
+      {/* Status section */}
+      {(() => {
+        const { statusGroups } = useStatusStore.getState();
+        const { user: cu } = useAuthStore.getState();
+        const myGroup = statusGroups.find(g => g.user?.id === cu?.id);
+        const otherGroups = statusGroups.filter(g => g.user?.id !== cu?.id);
+        const displayGroups = myGroup ? [myGroup, ...otherGroups] : otherGroups;
+
+        if (displayGroups.length === 0) return null;
+
+        return (
+          <div style={{
+            padding: "8px 16px 4px", background: Colors.white,
+            borderBottom: "0.5px solid #F0F2F5",
+          }}>
+            <div style={{
+              display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8,
+              scrollbarWidth: "none", msOverflowStyle: "none",
+            }}>
+              {displayGroups.map((group) => {
+                const hasUnviewed = group.statuses?.length > 0;
+                const latest = group.statuses?.[0];
+                const gradient = latest?.backgroundColor
+                  ? `linear-gradient(135deg, ${latest.backgroundColor}, ${latest.backgroundColor}dd)`
+                  : "linear-gradient(135deg, #25D366, #128C7E)";
+                return (
+                  <div key={group.user?.id || 'unknown'} style={{
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                    flexShrink: 0, minWidth: 64, position: 'relative',
+                  }}>
+                    <button onClick={() => {
+                      setActiveStatusGroup(group);
+                      setStatusIndex(0);
+                    }} style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                      background: "none", border: "none", cursor: "pointer", padding: 0,
+                    }}>
+                      <div style={{
+                        width: 56, height: 56, borderRadius: "50%", padding: 3,
+                        background: hasUnviewed ? gradient : "#E9EDEF",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        flexShrink: 0, position: 'relative',
+                      }}>
+                        <div style={{
+                          width: "100%", height: "100%", borderRadius: "50%",
+                          background: group.user?.avatar ? "none" : `hsl(${((group.user?.id || 0) * 40) % 360}, 45%, 45%)`,
+                          overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "#fff", fontWeight: 700, fontSize: 22, border: "2px solid #fff",
+                        }}>
+                          {group.user?.avatar ? (
+                            <img src={group.user.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            group.user?.username?.charAt(0).toUpperCase() || "?"
+                          )}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11, color: Colors.textSecondary, maxWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {group.user?.id === cu?.id ? "My status" : group.user?.username || "Unknown"}
+                      </span>
+                    </button>
+                    {group.user?.id !== cu?.id && (
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/chat/${group.user.id}`, { state: { user: group.user } });
+                      }} title="Send message"
+                        style={{
+                          position: 'absolute', bottom: 18, right: -2,
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: Colors.secondary, border: '2px solid #fff',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#fff', padding: 0,
+                        }}>
+                        <MessageCircle size={11} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{ padding: "8px 16px", background: Colors.white }}>
         <div
           style={{
@@ -550,7 +767,7 @@ const ChatListPage = () => {
           background: Colors.white,
         }}
       >
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -622,6 +839,74 @@ const ChatListPage = () => {
               </div>
             ))}
           </div>
+        ) : activeTab === "Support" && activeTicket ? (
+          <div
+            key="support-item"
+            onClick={() => { setTicketUnread(false); navigate("/support-chat"); }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "12px 16px",
+              cursor: "pointer",
+              borderBottom: "0.5px solid #F0F2F5",
+              animation: "fadeInUp 0.3s ease 0.03s both",
+              background: ticketUnread ? "#F0FFF4" : "transparent",
+            }}
+          >
+            <div
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: "50%",
+                background: Colors.primary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                position: "relative",
+              }}
+            >
+              <MessageSquare size={22} color={Colors.white} />
+              {ticketUnread && (
+                <span style={{ position: "absolute", top: -2, right: -2, width: 12, height: 12, borderRadius: "50%", background: "#E53935", border: "2px solid white" }} />
+              )}
+            </div>
+            <div style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: ticketUnread ? 700 : 500, fontSize: 16, color: Colors.textPrimary }}>
+                  Support Chat
+                </span>
+                <span style={{ fontSize: 11, color: Colors.textSecondary, flexShrink: 0 }}>
+                  {activeTicket.createdAt ? new Date(activeTicket.createdAt).toLocaleDateString() : ""}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
+                <span style={{ fontSize: 13, color: Colors.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                  {activeTicket.status === "open" ? "Waiting for admin" : activeTicket.status === "in_progress" ? "Admin is reviewing" : "Ticket resolved"}
+                </span>
+                {activeTicket.status === "open" && <span style={{ background: Colors.secondary, color: Colors.white, borderRadius: "50%", minWidth: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, padding: "0 5px", marginLeft: 8, flexShrink: 0 }}>!</span>}
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTicket(null);
+              }}
+              title="Dismiss support"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: Colors.textHint,
+                padding: 4,
+                display: "flex",
+                marginLeft: 4,
+                flexShrink: 0,
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
         ) : filtered.length === 0 &&
           conversations.length === 0 &&
           sortedGroups.length === 0 ? (
@@ -671,6 +956,10 @@ const ChatListPage = () => {
                   onClick={() =>
                     navigate(`/group-chat/${grp.id}`, { state: { group: grp } })
                   }
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, _type: "group", group: grp });
+                  }}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -797,7 +1086,6 @@ const ChatListPage = () => {
                   cursor: "pointer",
                   borderBottom: "0.5px solid #F0F2F5",
                   animation: `fadeInUp 0.3s ease ${i * 0.03}s both`,
-                  opacity: isArchived(conv.user.id) ? 0.5 : 1,
                 }}
               >
                 <div
@@ -993,6 +1281,43 @@ const ChatListPage = () => {
           </button>
           <button
             onClick={() => {
+              setShowCreateChannel(true);
+              setShowFabMenu(false);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: Colors.white,
+              border: "none",
+              borderRadius: 12,
+              padding: "12px 16px",
+              cursor: "pointer",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+              fontSize: 14,
+              fontWeight: 500,
+              color: Colors.textPrimary,
+              animation: "fadeInUp 0.15s ease",
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                background: "#E8F5E9",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: Colors.primary,
+              }}
+            >
+              <Radio size={18} />
+            </div>
+            New Channel
+          </button>
+          <button
+            onClick={() => {
               setShowNewChat(true);
               setShowFabMenu(false);
             }}
@@ -1085,6 +1410,193 @@ const ChatListPage = () => {
         open={showCreateGroup}
         onClose={() => setShowCreateGroup(false)}
       />
+      <CreateChannelModal
+        open={showCreateChannel}
+        onClose={() => setShowCreateChannel(false)}
+      />
+      <CreateStatusModal
+        open={showCreateStatus}
+        onClose={() => setShowCreateStatus(false)}
+      />
+
+      {showChannelList && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+          onClick={() => setShowChannelList(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: Colors.white, borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 480,
+            maxHeight: '70vh', padding: '20px 24px 30px', display: 'flex', flexDirection: 'column',
+            animation: 'slideUp 0.3s ease',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: Colors.textPrimary }}>My Channels</h3>
+              <button onClick={() => setShowChannelList(false)} style={{ background: '#F0F2F5', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: Colors.textHint }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {channels.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: Colors.textSecondary, fontSize: 14 }}>
+                  No channels yet
+                </div>
+              ) : (
+                channels.map((ch) => (
+                  <button key={ch.id} onClick={() => { setShowChannelList(false); navigate(`/channels/${ch.id}`); }} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0',
+                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%',
+                    borderBottom: '1px solid #F0F2F5',
+                  }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 12, background: '#E8F5E9', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    }}>
+                      {ch.avatar ? (
+                        <img src={ch.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <Radio size={20} color={Colors.primary} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: Colors.textPrimary }}>{ch.name}</div>
+                      <div style={{ fontSize: 12, color: Colors.textHint, marginTop: 1 }}>
+                        {ch.followerCount || 0} follower{(ch.followerCount || 0) !== 1 ? 's' : ''}
+                        {ch.isOwner ? ' · Owner' : ''}
+                      </div>
+                    </div>
+                    <Radio size={16} color={Colors.textHint} />
+                  </button>
+                ))
+              )}
+            </div>
+            <button onClick={() => { setShowChannelList(false); setShowCreateChannel(true); }} style={{
+              display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center',
+              marginTop: 12, padding: '12px 0', borderRadius: 12, border: `2px dashed ${Colors.border}`,
+              background: 'none', cursor: 'pointer', color: Colors.primary, fontWeight: 600, fontSize: 14,
+            }}>
+              <Plus size={18} />
+              Create Channel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeStatusGroup && (
+        <StatusViewer
+          statusGroup={activeStatusGroup}
+          onClose={() => setActiveStatusGroup(null)}
+          initialIndex={statusIndex}
+        />
+      )}
+
+      {showDeleteConfirm && (
+        <div
+          onClick={() => setShowDeleteConfirm(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 99999,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: "fadeIn 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: Colors.white,
+              borderRadius: 20,
+              padding: "32px 28px 24px",
+              width: 320,
+              animation: "scaleIn 0.2s ease",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: "50%",
+                background: "#FFF0F0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px",
+              }}
+            >
+              <Trash2 size={28} color={Colors.red} />
+            </div>
+            <h3
+              style={{
+                fontSize: 18,
+                margin: "0 0 4px",
+                color: Colors.textPrimary,
+                fontWeight: 600,
+              }}
+            >
+              {showDeleteConfirm._type === "group" ? "Delete group?" : "Delete conversation?"}
+            </h3>
+            <p
+              style={{
+                fontSize: 13,
+                color: Colors.textSecondary,
+                margin: "0 0 24px",
+                lineHeight: 1.5,
+              }}
+            >
+              {showDeleteConfirm._type === "group" ? (
+                <>This will delete the chat with <strong style={{ color: Colors.textPrimary }}>{showDeleteConfirm.group?.name || "this group"}</strong>. This action cannot be undone.</>
+              ) : (
+                <>This will delete the chat with <strong style={{ color: Colors.textPrimary }}>{showDeleteConfirm.user?.username || "this user"}</strong>. This action cannot be undone.</>
+              )}
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                style={{
+                  flex: 1,
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: "1px solid #E0E0E0",
+                  background: Colors.white,
+                  color: Colors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (showDeleteConfirm._type === "group") {
+                    await useGroupStore.getState().exitGroup(showDeleteConfirm.group.id);
+                    fetchGroups();
+                  } else {
+                    const { id } = showDeleteConfirm.user;
+                    if (id === 0) return;
+                    await useChatStore.getState().deleteConversation(id);
+                  }
+                  setShowDeleteConfirm(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: "none",
+                  background: Colors.red,
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {showDeleteConfirm._type === "group" ? "Exit & Delete" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pinPrompt && (
         <div
@@ -1215,36 +1727,64 @@ const ChatListPage = () => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div
-            onClick={() => {
-              const { id } = contextMenu.conv.user;
-              const archived = isArchived(id);
-              toggleArchive(id);
-              useChatStore.getState().fetchConversations();
-              setContextMenu(null);
-            }}
-            style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: Colors.textPrimary }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Archive size={16} />
-            {isArchived(contextMenu.conv.user.id) ? 'Unarchive' : 'Archive'}
-          </div>
-          <div
-            onClick={async () => {
-              const { id } = contextMenu.conv.user;
-              if (id === 0) return;
-              if (!window.confirm('Delete this conversation?')) return;
-              await useChatStore.getState().deleteConversation(id);
-              setContextMenu(null);
-            }}
-            style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#E53935' }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Trash2 size={16} />
-            Delete
-          </div>
+          {contextMenu._type === "group" ? (
+            <>
+              <div
+                onClick={() => {
+                  toggleGroupArchive(contextMenu.group.id);
+                  setContextMenu(null);
+                }}
+                style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: Colors.textPrimary }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <Archive size={16} />
+                {isGroupArchived(contextMenu.group.id) ? 'Unarchive' : 'Archive'}
+              </div>
+              <div
+                onClick={() => {
+                  setShowDeleteConfirm({ _type: "group", group: contextMenu.group });
+                  setContextMenu(null);
+                }}
+                style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#E53935' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <Trash2 size={16} />
+                Delete
+              </div>
+            </>
+          ) : (
+            <>
+              <div
+                onClick={() => {
+                  const { id } = contextMenu.conv.user;
+                  const archived = isArchived(id);
+                  toggleArchive(id);
+                  useChatStore.getState().fetchConversations();
+                  setContextMenu(null);
+                }}
+                style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: Colors.textPrimary }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <Archive size={16} />
+                {isArchived(contextMenu.conv.user.id) ? 'Unarchive' : 'Archive'}
+              </div>
+              <div
+                onClick={() => {
+                  setShowDeleteConfirm(contextMenu.conv);
+                  setContextMenu(null);
+                }}
+                style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#E53935' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#F0F2F5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <Trash2 size={16} />
+                Delete
+              </div>
+            </>
+          )}
         </div>
       )}
       {notifPopup && (

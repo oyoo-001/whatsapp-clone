@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   MessageCircle,
   Phone,
@@ -7,6 +7,9 @@ import {
   EyeOff,
   AlertCircle,
   CheckCircle,
+  ShieldAlert,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import useAuthStore from "../stores/authStore";
 import { useToast } from "../components/Toast";
@@ -14,12 +17,46 @@ import { Colors } from "../styles/theme";
 
 const LoginPage = () => {
   const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+254");
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [banModal, setBanModal] = useState(null);
   const { login, isLoading, isAuthenticated } = useAuthStore();
+
+  const countryCodes = [
+    { code: "+254", name: "KE", label: "Kenya" },
+    { code: "+1", name: "US", label: "USA/Canada" },
+    { code: "+44", name: "UK", label: "United Kingdom" },
+    { code: "+91", name: "IN", label: "India" },
+    { code: "+234", name: "NG", label: "Nigeria" },
+    { code: "+27", name: "ZA", label: "South Africa" },
+    { code: "+256", name: "UG", label: "Uganda" },
+    { code: "+255", name: "TZ", label: "Tanzania" },
+    { code: "+233", name: "GH", label: "Ghana" },
+    { code: "+20", name: "EG", label: "Egypt" },
+    { code: "+251", name: "ET", label: "Ethiopia" },
+    { code: "+212", name: "MA", label: "Morocco" },
+    { code: "+92", name: "PK", label: "Pakistan" },
+    { code: "+880", name: "BD", label: "Bangladesh" },
+    { code: "+63", name: "PH", label: "Philippines" },
+    { code: "+62", name: "ID", label: "Indonesia" },
+    { code: "+86", name: "CN", label: "China" },
+    { code: "+81", name: "JP", label: "Japan" },
+    { code: "+82", name: "KR", label: "South Korea" },
+    { code: "+33", name: "FR", label: "France" },
+    { code: "+49", name: "DE", label: "Germany" },
+    { code: "+39", name: "IT", label: "Italy" },
+    { code: "+34", name: "ES", label: "Spain" },
+    { code: "+55", name: "BR", label: "Brazil" },
+    { code: "+52", name: "MX", label: "Mexico" },
+    { code: "+61", name: "AU", label: "Australia" },
+  ];
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get("redirect") || "/";
   const toast = useToast();
 
   useEffect(() => {
@@ -30,12 +67,15 @@ const LoginPage = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (!phone.trim()) {
+    setBanModal(null);
+    const localNum = phone.trim().replace(/^0+/, "");
+    if (!localNum) {
       const m = "Phone number is required";
       setError(m);
       toast(m, "error");
       return;
     }
+    const fullPhone = countryCode + localNum;
     if (!password) {
       const m = "Password is required";
       setError(m);
@@ -43,12 +83,17 @@ const LoginPage = () => {
       return;
     }
     try {
-      await login(phone, password);
+      await login(fullPhone, password);
       setSuccess("Welcome back!");
       toast("Welcome back!", "success");
-      setTimeout(() => navigate("/", { replace: true }), 400);
+      setTimeout(() => navigate(redirect, { replace: true }), 400);
     } catch (err) {
-      const m = err.response?.data?.error || "Invalid credentials";
+      const data = err.response?.data;
+      const m = data?.error || "Invalid credentials";
+      if (data?.isBanned) {
+        setBanModal({ message: m });
+        return;
+      }
       setError(m);
       toast(m, "error");
     }
@@ -181,26 +226,98 @@ const LoginPage = () => {
           >
             PHONE NUMBER
           </label>
-          <div style={{ position: "relative" }}>
-            <Phone
-              size={18}
-              color={Colors.textHint}
-              style={{
-                position: "absolute",
-                left: 16,
-                top: "50%",
-                transform: "translateY(-50%)",
-                zIndex: 1,
-                pointerEvents: "none",
-              }}
-            />
-            <input
-              autoComplete="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+254712345678"
-              style={{ ...inputStyle, paddingLeft: 48, height: 54 }}
-            />
+          <div style={{ position: "relative", display: "flex", gap: 8 }}>
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                style={{
+                  height: 54,
+                  padding: "0 14px",
+                  background: "#F5F7FA",
+                  border: "2px solid transparent",
+                  borderRadius: 14,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: Colors.textPrimary,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              >
+                <span>{countryCode}</span>
+                <span style={{ fontSize: 10, color: Colors.textHint }}>▼</span>
+              </button>
+              {showCountryDropdown && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 58,
+                    left: 0,
+                    zIndex: 100,
+                    background: Colors.white,
+                    borderRadius: 14,
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.15)",
+                    maxHeight: 240,
+                    overflowY: "auto",
+                    minWidth: 180,
+                    padding: 4,
+                    animation: "scaleIn 0.12s ease",
+                  }}
+                >
+                  {countryCodes.map((cc) => (
+                    <button
+                      key={cc.code}
+                      type="button"
+                      onClick={() => { setCountryCode(cc.code); setShowCountryDropdown(false); }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        width: "100%",
+                        padding: "10px 12px",
+                        background: countryCode === cc.code ? "#E8F5E9" : "transparent",
+                        border: "none",
+                        borderRadius: 10,
+                        cursor: "pointer",
+                        fontSize: 14,
+                        color: Colors.textPrimary,
+                        textAlign: "left",
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#F0F2F5"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = countryCode === cc.code ? "#E8F5E9" : "transparent"}
+                    >
+                      <span style={{ fontWeight: 600, minWidth: 50 }}>{cc.code}</span>
+                      <span style={{ color: Colors.textSecondary }}>{cc.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ position: "relative", flex: 1 }}>
+              <Phone
+                size={18}
+                color={Colors.textHint}
+                style={{
+                  position: "absolute",
+                  left: 16,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 1,
+                  pointerEvents: "none",
+                }}
+              />
+              <input
+                autoComplete="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="712345678"
+                style={{ ...inputStyle, paddingLeft: 48, height: 54 }}
+              />
+            </div>
           </div>
         </div>
         <div>
@@ -298,7 +415,7 @@ const LoginPage = () => {
         >
           Don't have an account?{" "}
           <Link
-            to="/register"
+            to={`/register${redirect && redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}
             style={{
               color: Colors.primary,
               fontWeight: 700,
@@ -309,6 +426,107 @@ const LoginPage = () => {
           </Link>
         </p>
       </form>
+
+      {banModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 24,
+            backdropFilter: "blur(4px)",
+            animation: "fadeIn 0.2s ease",
+          }}
+          onClick={() => setBanModal(null)}
+        >
+          <div
+            style={{
+              background: Colors.white,
+              borderRadius: 24,
+              padding: "32px 28px",
+              maxWidth: 380,
+              width: "100%",
+              textAlign: "center",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+              animation: "slideUp 0.3s ease",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: "50%",
+                background: "#FEF2F2",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 20px",
+              }}
+            >
+              <ShieldAlert size={32} color="#DC2626" />
+            </div>
+            <h2
+              style={{
+                fontSize: 20,
+                fontWeight: 700,
+                color: Colors.textPrimary,
+                margin: "0 0 10px",
+              }}
+            >
+              Account Deactivated
+            </h2>
+            <p
+              style={{
+                fontSize: 14,
+                color: Colors.textSecondary,
+                lineHeight: "1.5",
+                margin: "0 0 24px",
+              }}
+            >
+              {banModal.message}
+            </p>
+            <button
+              onClick={() => { setBanModal(null); navigate("/banned-support"); }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                background: Colors.primary,
+                color: Colors.white,
+                padding: "14px 28px",
+                borderRadius: 12,
+                fontSize: 15,
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+                marginBottom: 12,
+              }}
+            >
+              <ExternalLink size={18} />
+              Contact Support
+            </button>
+            <br />
+            <button
+              onClick={() => setBanModal(null)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: Colors.textSecondary,
+                fontSize: 13,
+                cursor: "pointer",
+                padding: "8px 16px",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

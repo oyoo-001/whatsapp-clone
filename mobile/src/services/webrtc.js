@@ -1,22 +1,28 @@
 import { Platform, PermissionsAndroid } from 'react-native';
-import {
-  mediaDevices,
-  RTCPeerConnection,
-  RTCSessionDescription,
-  RTCIceCandidate,
-  MediaStream,
-} from 'react-native-webrtc';
-import socketService from './socket';
+
+let mediaDevices = null;
+let RTCPeerConnection = null;
+let RTCSessionDescription = null;
+let RTCIceCandidate = null;
+let MediaStream = null;
+let webrtcAvailable = false;
+
+try {
+  const webrtc = require('react-native-webrtc');
+  mediaDevices = webrtc.mediaDevices;
+  RTCPeerConnection = webrtc.RTCPeerConnection;
+  RTCSessionDescription = webrtc.RTCSessionDescription;
+  RTCIceCandidate = webrtc.RTCIceCandidate;
+  MediaStream = webrtc.MediaStream;
+  webrtcAvailable = true;
+} catch (e) {
+  console.log('WebRTC native module not available (Expo Go). Calls disabled.');
+}
 
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    {
-      urls: 'turn:your-turn-server.com:3478',
-      username: 'username',
-      credential: 'credential',
-    },
   ],
   iceCandidatePoolSize: 10,
 };
@@ -31,7 +37,12 @@ class WebRTCService {
     this.onConnectionStateChange = null;
   }
 
+  isAvailable() {
+    return webrtcAvailable;
+  }
+
   async requestPermissions() {
+    if (!webrtcAvailable) return false;
     if (Platform.OS === 'android') {
       try {
         const grants = await PermissionsAndroid.requestMultiple([
@@ -51,10 +62,9 @@ class WebRTCService {
   }
 
   async getLocalStream(video = true, audio = true) {
+    if (!webrtcAvailable) throw new Error('WebRTC not available in Expo Go');
     try {
-      const sourceInfos = await mediaDevices.enumerateDevices();
       const facing = 'user';
-
       this.localStream = await mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
         video: video
@@ -66,7 +76,6 @@ class WebRTCService {
             }
           : false,
       });
-
       return this.localStream;
     } catch (error) {
       console.error('Error getting local stream:', error);
@@ -75,6 +84,7 @@ class WebRTCService {
   }
 
   async getScreenStream() {
+    if (!webrtcAvailable) throw new Error('WebRTC not available in Expo Go');
     try {
       this.screenStream = await mediaDevices.getDisplayMedia({
         video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -88,6 +98,7 @@ class WebRTCService {
   }
 
   createPeerConnection(userId, isCaller = false) {
+    if (!webrtcAvailable) throw new Error('WebRTC not available in Expo Go');
     if (this.peerConnections.has(userId)) {
       this.closeConnection(userId);
     }
@@ -96,6 +107,7 @@ class WebRTCService {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        const { default: socketService } = require('./socket');
         socketService.emit('signal:ice-candidate', {
           to: userId,
           candidate: event.candidate,
@@ -142,69 +154,51 @@ class WebRTCService {
   }
 
   async startCall(userId, isVideo = true) {
-    try {
-      const pc = this.createPeerConnection(userId, true);
+    const pc = this.createPeerConnection(userId, true);
 
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: isVideo,
-      });
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: isVideo,
+    });
 
-      await pc.setLocalDescription(offer);
+    await pc.setLocalDescription(offer);
 
-      socketService.emit('signal:offer', {
-        to: userId,
-        offer: { type: offer.type, sdp: offer.sdp },
-      });
+    const { default: socketService } = await import('./socket');
+    socketService.emit('signal:offer', {
+      to: userId,
+      offer: { type: offer.type, sdp: offer.sdp },
+    });
 
-      return pc;
-    } catch (error) {
-      console.error('Error starting call:', error);
-      throw error;
-    }
+    return pc;
   }
 
   async handleOffer(from, offer) {
-    try {
-      const pc = this.createPeerConnection(from, false);
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const pc = this.createPeerConnection(from, false);
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
 
-      socketService.emit('signal:answer', {
-        to: from,
-        answer: { type: answer.type, sdp: answer.sdp },
-      });
+    const { default: socketService } = await import('./socket');
+    socketService.emit('signal:answer', {
+      to: from,
+      answer: { type: answer.type, sdp: answer.sdp },
+    });
 
-      return pc;
-    } catch (error) {
-      console.error('Error handling offer:', error);
-      throw error;
-    }
+    return pc;
   }
 
   async handleAnswer(from, answer) {
-    try {
-      const pc = this.peerConnections.get(from);
-      if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      }
-    } catch (error) {
-      console.error('Error handling answer:', error);
-      throw error;
+    const pc = this.peerConnections.get(from);
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
     }
   }
 
   async handleIceCandidate(from, candidate) {
-    try {
-      const pc = this.peerConnections.get(from);
-      if (pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      }
-    } catch (error) {
-      console.error('Error handling ICE candidate:', error);
-      throw error;
+    const pc = this.peerConnections.get(from);
+    if (pc) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
     }
   }
 

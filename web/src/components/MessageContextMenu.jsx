@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { MessageSquare, Edit2, Trash2, Forward, X } from 'lucide-react';
 import { Colors } from '../styles/theme';
 
@@ -8,7 +9,39 @@ const menuItems = [
   { icon: Trash2, label: 'Delete', action: 'delete', color: Colors.red },
 ];
 
+const PADDING = 12;
+
 const MessageContextMenu = ({ open, onClose, onAction, isMine, position, message, isAdmin }) => {
+  const menuRef = useRef(null);
+  const [adjustedPos, setAdjustedPos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!open || !position || !menuRef.current) return;
+    const el = menuRef.current;
+    const rect = el.getBoundingClientRect();
+    let x = position.x;
+    let y = position.y;
+
+    // Horizontal: shift left by half width, clamp to viewport
+    x -= rect.width / 2;
+    if (x + rect.width > window.innerWidth - PADDING) {
+      x = window.innerWidth - rect.width - PADDING;
+    }
+    if (x < PADDING) {
+      x = PADDING;
+    }
+
+    // Vertical: if offscreen bottom, flip above
+    if (y + rect.height > window.innerHeight - PADDING) {
+      y = position.y - rect.height;
+    }
+    if (y < PADDING) {
+      y = PADDING;
+    }
+
+    setAdjustedPos({ x, y });
+  }, [open, position]);
+
   if (!open) return null;
 
 const items = menuItems.filter((item) => {
@@ -23,21 +56,25 @@ const items = menuItems.filter((item) => {
   return true;
 });
 
+  const pos = position ? adjustedPos : null;
+
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 99998,
     }}>
-      <div style={{
-        position: 'fixed',
-        top: position?.y ? `${position.y}px` : '50%',
-        left: position?.x ? `${position.x}px` : '50%',
-        transform: position ? 'translate(-50%, 0)' : 'translate(-50%, -50%)',
-        background: Colors.white, borderRadius: 16,
-        boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
-        padding: 8, minWidth: 200,
-        animation: 'scaleIn 0.15s ease',
-        zIndex: 99999,
-      }} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={menuRef}
+        style={{
+          position: 'fixed',
+          top: pos ? `${pos.y}px` : '50%',
+          left: pos ? `${pos.x}px` : '50%',
+          transform: pos ? 'none' : 'translate(-50%, -50%)',
+          background: Colors.white, borderRadius: 16,
+          boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
+          padding: 8, minWidth: 200,
+          animation: 'scaleIn 0.15s ease',
+          zIndex: 99999,
+        }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px 4px', borderBottom: '1px solid #F0F2F5', marginBottom: 4 }}>
           <span style={{ fontSize: 13, color: Colors.textSecondary, fontWeight: 500 }}>Message Actions</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: Colors.textHint }}>

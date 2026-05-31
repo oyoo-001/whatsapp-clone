@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { FileText, Mic, Image, X, Check, CheckCheck, Reply, Edit3, ZoomIn, ZoomOut, Verified } from 'lucide-react';
 import { Colors } from '../styles/theme';
+import { renderTextWithLinks, extractUrls } from '../utils/links';
+import LinkPreview from './LinkPreview';
 
 const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEditing, onRetry }) => {
   const [imgError, setImgError] = useState(false);
@@ -145,6 +147,14 @@ const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEd
     }
 
     if (message.content) {
+      const urls = extractUrls(message.content);
+      if (urls.length > 0) {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span>{renderTextWithLinks(message.content)}</span>
+          </div>
+        );
+      }
       return message.content;
     }
 
@@ -232,6 +242,13 @@ const MessageBubble = ({ message, isMine, onLongPress, onReply, isReplying, isEd
         }}>
           {renderContent()}
         </div>
+        {!message.isDeleted && message.content && message.messageType === 'text' && (() => {
+          const urls = extractUrls(message.content);
+          if (urls.length > 0) {
+            return <LinkPreview url={urls[0]} />;
+          }
+          return null;
+        })()}
         {(message.content && (message.fileUrl || message.messageType !== 'text')) ? (
           <div style={{ marginTop: 4 }} />
         ) : null}

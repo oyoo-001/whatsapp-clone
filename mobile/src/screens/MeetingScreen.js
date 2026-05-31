@@ -9,7 +9,12 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { RTCView } from 'react-native-webrtc';
+let RTCView = null;
+try {
+  RTCView = require('react-native-webrtc').RTCView;
+} catch (e) {
+  console.log('RTCView not available (Expo Go). Meetings disabled.');
+}
 import { Colors, Fonts, Spacing, BorderRadius } from '../constants';
 import webrtcService from '../services/webrtc';
 import socketService from '../services/socket';
@@ -31,6 +36,11 @@ const MeetingScreen = ({ route, navigation }) => {
   const [joinMeetingId, setJoinMeetingId] = useState('');
 
   useEffect(() => {
+    if (!webrtcService.isAvailable()) {
+      Alert.alert('Not Available', 'Meetings require a development build (not available in Expo Go)');
+      navigation.goBack();
+      return;
+    }
     setupMeeting();
     return () => {
       leaveMeeting();

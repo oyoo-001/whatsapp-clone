@@ -36,6 +36,10 @@
         "WRITE_EXTERNAL_STORAGE"
       ]
     },
+    "extra": {
+      "apiUrl": null,
+      "socketUrl": null
+    },
     "plugins": [
       [
         "expo-av",

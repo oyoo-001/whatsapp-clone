@@ -1,12 +1,22 @@
+const crypto = require('crypto');
 const { Group, GroupMember, GroupMessage, User } = require('../models');
 const { Op } = require('sequelize');
+
+const genCode = () => crypto.randomBytes(6).toString('base64url').slice(0, 8);
+
+const ensureInviteCode = async (group) => {
+  if (!group.inviteCode) {
+    group.inviteCode = genCode();
+    await group.save();
+  }
+};
 
 exports.createGroup = async (req, res) => {
   try {
     const { name, description } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Group name is required' });
 
-    const group = await Group.create({ name: name.trim(), description: description || null, createdBy: req.user.id });
+    const group = await Group.create({ name: name.trim(), description: description || null, createdBy: req.user.id, inviteCode: genCode() });
 
     await GroupMember.create({ groupId: group.id, userId: req.user.id, role: 'admin' });
 
@@ -67,6 +77,31 @@ exports.getMyGroups = async (req, res) => {
   }
 };
 
+exports.getGroupByInviteCode = async (req, res) => {
+  try {
+    const { code } = req.params;
+    const group = await Group.findOne({
+      where: { inviteCode: code },
+      include: [
+        { model: User, as: 'participants', attributes: ['id', 'username', 'avatar'], through: { attributes: [] } },
+        { model: User, as: 'creator', attributes: ['id', 'username', 'avatar'] },
+      ],
+    });
+
+    if (!group) return res.status(404).json({ error: 'Invalid invite code' });
+
+    res.json({
+      group: {
+        ...group.toJSON(),
+        memberCount: group.participants?.length || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Get group by invite error:', error);
+    res.status(500).json({ error: 'Failed to get group' });
+  }
+};
+
 exports.getGroup = async (req, res) => {
   try {
     const group = await Group.findByPk(req.params.id, {
@@ -86,6 +121,8 @@ exports.getGroup = async (req, res) => {
     });
 
     if (!group) return res.status(404).json({ error: 'Group not found' });
+
+    await ensureInviteCode(group);
 
     const membership = await GroupMember.findOne({
       where: { groupId: group.id, userId: req.user.id },
@@ -167,6 +204,32 @@ exports.removeMember = async (req, res) => {
   } catch (error) {
     console.error('Remove member error:', error);
     res.status(500).json({ error: 'Failed to remove member' });
+  }
+};
+
+exports.exitGroup = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const userId = req.user.id;
+
+    const membership = await GroupMember.findOne({ where: { groupId, userId } });
+    if (!membership) return res.status(404).json({ error: 'Not a member of this group' });
+
+    await GroupMember.destroy({ where: { groupId, userId } });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user-${userId}`).emit('group:member-removed', { groupId });
+      const members = await GroupMember.findAll({ where: { groupId } });
+      members.forEach((m) => {
+        io.to(`user-${m.userId}`).emit('group:member-removed', { groupId, removedUserId: userId });
+      });
+    }
+
+    res.json({ message: 'Exited group' });
+  } catch (error) {
+    console.error('Exit group error:', error);
+    res.status(500).json({ error: 'Failed to exit group' });
   }
 };
 
@@ -406,6 +469,85 @@ exports.markGroupAsRead = async (req, res) => {
   } catch (error) {
     console.error('Mark group as read error:', error);
     res.status(500).json({ error: 'Failed to mark as read' });
+  }
+};
+
+exports.generateInviteCode = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+
+    const membership = await GroupMember.findOne({ where: { groupId, userId: req.user.id } });
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can generate invite link' });
+    }
+
+    const group = await Group.findByPk(groupId);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+
+    if (!group.inviteCode) {
+      group.inviteCode = genCode();
+      await group.save();
+    }
+
+    res.json({ inviteCode: group.inviteCode });
+  } catch (error) {
+    console.error('Generate group invite error:', error);
+    res.status(500).json({ error: 'Failed to generate invite link' });
+  }
+};
+
+exports.regenerateGroupInviteCode = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+
+    const membership = await GroupMember.findOne({ where: { groupId, userId: req.user.id } });
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can regenerate invite link' });
+    }
+
+    const group = await Group.findByPk(groupId);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+
+    group.inviteCode = genCode();
+    await group.save();
+
+    res.json({ inviteCode: group.inviteCode });
+  } catch (error) {
+    console.error('Regenerate group invite error:', error);
+    res.status(500).json({ error: 'Failed to regenerate invite link' });
+  }
+};
+
+exports.joinGroupByInvite = async (req, res) => {
+  try {
+    const code = req.body.code || req.body.inviteCode;
+    if (!code) return res.status(400).json({ error: 'Invite code required' });
+
+    const group = await Group.findOne({ where: { inviteCode: code } });
+    if (!group) return res.status(404).json({ error: 'Invalid invite code' });
+
+    const [member, created] = await GroupMember.findOrCreate({
+      where: { groupId: group.id, userId: req.user.id },
+      defaults: { groupId: group.id, userId: req.user.id, role: 'member' },
+    });
+
+    if (!created) return res.status(400).json({ error: 'Already a member of this group' });
+
+    const fullGroup = await Group.findByPk(group.id, {
+      include: [
+        {
+          model: User,
+          as: 'participants',
+          attributes: ['id', 'username', 'phoneNumber', 'avatar', 'status'],
+          through: { attributes: ['role', 'joinedAt'] },
+        },
+      ],
+    });
+
+    res.json({ group: fullGroup });
+  } catch (error) {
+    console.error('Join group by invite error:', error);
+    res.status(500).json({ error: 'Failed to join group' });
   }
 };
 

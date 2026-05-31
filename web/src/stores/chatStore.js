@@ -55,6 +55,16 @@ const useChatStore = create((set, get) => ({
     }));
   },
 
+  updateUserStatus: (userId, isOnline) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.user.id === userId
+          ? { ...c, user: { ...c.user, isOnline } }
+          : c
+      ),
+    }));
+  },
+
   fetchMessages: async (userId) => {
     set({ isLoadingMessages: true });
     try {
@@ -227,7 +237,9 @@ const useChatStore = create((set, get) => ({
     }
     await messagesAPI.deleteMessage(messageId, mode);
     if (mode === 'me') {
-      get().updateMessageInStore(messageId, { content: null, fileUrl: null, messageType: 'text', isDeleted: true });
+      set((state) => ({
+        messages: state.messages.filter((m) => m.id !== messageId && m._tempId !== messageId),
+      }));
     } else {
       set((state) => ({
         messages: state.messages.filter((m) => m.id !== messageId && m._tempId !== messageId),
@@ -280,13 +292,9 @@ const useChatStore = create((set, get) => ({
     });
 
     socketService.on('chat:deleted', (data) => {
-      if (data.mode === 'all') {
-        set((state) => ({
-          messages: state.messages.filter((m) => m.id !== data.messageId && m._tempId !== data.messageId),
-        }));
-      } else {
-        get().updateMessageInStore(data.messageId, { content: null, fileUrl: null, messageType: 'text', isDeleted: true });
-      }
+      set((state) => ({
+        messages: state.messages.filter((m) => m.id !== data.messageId && m._tempId !== data.messageId),
+      }));
     });
   },
 

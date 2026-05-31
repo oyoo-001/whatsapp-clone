@@ -18,6 +18,14 @@ const SupportTicket = sequelize.define('SupportTicket', {
     type: DataTypes.ENUM('open', 'in_progress', 'resolved'),
     defaultValue: 'open',
   },
+  contactPhone: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+  },
+  isBannedRequest: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
 }, {
   timestamps: true,
 });
