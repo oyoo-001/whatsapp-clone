@@ -23,6 +23,7 @@ import {
   MessageSquare,
   X,
   Radio,
+  BadgeCheck,
   Circle,
 } from "lucide-react";
 import useAuthStore from "../stores/authStore";
@@ -53,6 +54,7 @@ const BASE_TABS = ["All", "Unread"];
 const ChatListPage = () => {
   const { logout, user } = useAuthStore();
   const { conversations, fetchConversations, isLoading } = useChatStore();
+  const channels = useChannelStore(state => state.channels);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("All");
   const [showNewChat, setShowNewChat] = useState(false);
@@ -1466,7 +1468,10 @@ const ChatListPage = () => {
                       )}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: Colors.textPrimary }}>{ch.name}</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: Colors.textPrimary, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {ch.name}
+                        {ch.isVerified && <BadgeCheck size={14} color={Colors.accent} />}
+                      </div>
                       <div style={{ fontSize: 12, color: Colors.textHint, marginTop: 1 }}>
                         {ch.followerCount || 0} follower{(ch.followerCount || 0) !== 1 ? 's' : ''}
                         {ch.isOwner ? ' · Owner' : ''}

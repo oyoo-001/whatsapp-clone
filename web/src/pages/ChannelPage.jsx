@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Radio, Users, Plus, X, Send, Share2, Settings,
-  Copy, Check, Trash2, Link, Edit3, Camera,
+  Copy, Check, Trash2, Link, Edit3, Camera, BadgeCheck,
 } from 'lucide-react';
 import { Colors } from '../styles/theme';
 import useChannelStore from '../stores/channelStore';
@@ -190,7 +190,10 @@ const ChannelPage = () => {
           )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: Colors.white }}>{channel.name}</h2>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: Colors.white, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {channel.name}
+            {channel.isVerified && <BadgeCheck size={16} color={Colors.accent} />}
+          </h2>
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
             {channel.followerCount || 0} followers
           </span>

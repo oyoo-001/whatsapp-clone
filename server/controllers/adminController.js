@@ -1,4 +1,4 @@
-const { User, Message, Group, GroupMessage, SupportTicket, SupportMessage, Broadcast, BroadcastRead, Channel, ChannelFollower } = require("../models");
+const { User, Message, Group, GroupMessage, SupportTicket, SupportMessage, Broadcast, BroadcastRead, Channel, ChannelFollower, ChannelPost } = require("../models");
 const { Op, Sequelize } = require("sequelize");
 
 exports.getStats = async (req, res) => {
@@ -9,7 +9,9 @@ exports.getStats = async (req, res) => {
         createdAt: { [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0)) },
       },
     });
-    // Count distinct conversations (pairs of senderId-receiverId)
+    const usersThisWeek = await User.count({
+      where: { createdAt: { [Op.gte]: new Date(Date.now() - 7 * 86400000) } },
+    });
     const conversationPairs = await Message.findAll({
       where: { isBroadcast: { [Op.not]: true } },
       attributes: ["senderId", "receiverId"],
@@ -19,17 +21,40 @@ exports.getStats = async (req, res) => {
     const totalConversations = conversationPairs.length;
     const totalGroups = await Group.count();
     const totalMessages = await Message.count();
+    const messagesToday = await Message.count({
+      where: { createdAt: { [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0)) } },
+    });
     const totalGroupMessages = await GroupMessage.count();
+    const groupMessagesToday = await GroupMessage.count({
+      where: { createdAt: { [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0)) } },
+    });
     const bannedUsers = await User.count({ where: { isBanned: true } });
+    const totalChannels = await Channel.count();
+    const totalChannelPosts = await ChannelPost.count();
+
+    const activeUsers = await User.count({
+      where: { updatedAt: { [Op.gte]: new Date(Date.now() - 7 * 86400000) }, isBanned: false },
+    });
+
+    const adminCount = await User.count({ where: { isAdmin: true } });
+    const verifiedUsers = await User.count({ where: { isVerified: true } });
 
     res.json({
       totalUsers,
       usersToday,
+      usersThisWeek,
       totalConversations,
       totalGroups,
       totalMessages,
+      messagesToday,
       totalGroupMessages,
+      groupMessagesToday,
       bannedUsers,
+      totalChannels,
+      totalChannelPosts,
+      activeUsers,
+      adminCount,
+      verifiedUsers,
     });
   } catch (error) {
     console.error("Admin stats error:", error);

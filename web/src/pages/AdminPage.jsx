@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, MessageSquare, Group, BarChart3,
   Ban, Shield, Send, Search, X, BadgeCheck, Trash2, RefreshCw, Clock, CheckCircle2, MessageCircle,
-  FileText, Image, Music, Eye, Radio, Check,
+  FileText, Image, Music, Eye, Radio, Check, UserPlus, Activity,
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import { adminAPI, uploadAPI } from '../services/api';
@@ -56,6 +56,7 @@ const AdminPage = () => {
     if (!currentUser?.isAdmin) { navigate('/'); return; }
     fetchStats();
     fetchUsers();
+    fetchChannels();
     fetchBroadcasts();
     fetchSupportQueue();
     fetchSupportHistory();
@@ -253,14 +254,65 @@ const AdminPage = () => {
 
   if (!currentUser?.isAdmin) return null;
 
-  const statCards = [
-    { label: 'Total Users', value: stats?.totalUsers || 0, icon: Users, color: '#075E54' },
-    { label: 'Joined Today', value: stats?.usersToday || 0, icon: Users, color: '#128C7E' },
-    { label: 'Conversations', value: stats?.totalConversations || 0, icon: MessageSquare, color: '#34B7F1' },
-    { label: 'Groups', value: stats?.totalGroups || 0, icon: Group, color: '#25D366' },
-    { label: 'Messages', value: stats?.totalMessages || 0, icon: Send, color: '#E91E63' },
-    { label: 'Banned', value: stats?.bannedUsers || 0, icon: Ban, color: '#E53935' },
-  ];
+  const BarChart = ({ data, height = 120 }) => {
+    const max = Math.max(...data.map(d => d.value), 1);
+    const barW = Math.max(20, Math.min(40, (280 / data.length) - 4));
+    return (
+      <svg width="100%" height={height} viewBox={`0 0 ${data.length * (barW + 4)} ${height}`} style={{ display: 'block' }}>
+        {data.map((d, i) => {
+          const barH = (d.value / max) * (height - 24);
+          return (
+            <g key={i}>
+              <rect x={i * (barW + 4) + 2} y={height - 16 - barH} width={barW} height={barH} rx={4} fill={d.color} opacity={0.85} />
+              <text x={i * (barW + 4) + 2 + barW / 2} y={height - 4} textAnchor="middle" fontSize={9} fill="#666">{d.label}</text>
+              <text x={i * (barW + 4) + 2 + barW / 2} y={height - 18 - barH} textAnchor="middle" fontSize={10} fontWeight={600} fill="#333">{d.value}</text>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  };
+
+  const MiniDonut = ({ value, total, color, size = 60 }) => {
+    const pct = total > 0 ? (value / total) * 100 : 0;
+    const r = 12;
+    const circ = 2 * Math.PI * r;
+    const dash = (pct / 100) * circ;
+    return (
+      <svg width={size} height={size} viewBox="0 0 30 30">
+        <circle cx="15" cy="15" r={r} fill="none" stroke="#EEEEEE" strokeWidth="4" />
+        <circle cx="15" cy="15" r={r} fill="none" stroke={color} strokeWidth="4"
+          strokeDasharray={`${dash} ${circ - dash}`} transform="rotate(-90 15 15)" strokeLinecap="round" />
+        <text x="15" y="15" textAnchor="middle" dominantBaseline="central" fontSize={7} fontWeight={700} fill="#333">{Math.round(pct)}%</text>
+      </svg>
+    );
+  };
+
+  const SectionTitle = ({ children }) => (
+    <div style={{ fontSize: 13, fontWeight: 600, color: Colors.textSecondary, marginBottom: 10, marginTop: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+      {children}
+    </div>
+  );
+
+  const StatCard = ({ label, value, icon: Icon, color, subtitle, trend }) => (
+    <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 6, border: `1px solid ${color}15` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon size={16} color={color} />
+        </div>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: Colors.textPrimary, lineHeight: 1.2 }}>{value}</div>
+          <div style={{ fontSize: 11, color: Colors.textSecondary }}>{label}</div>
+        </div>
+      </div>
+      {subtitle && <div style={{ fontSize: 10, color: Colors.textHint }}>{subtitle}</div>}
+      {trend !== undefined && (
+        <div style={{ fontSize: 10, color: trend >= 0 ? '#25D366' : '#E53935', fontWeight: 500 }}>
+          {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}%
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', width: '100%', background: Colors.white }}>
@@ -288,18 +340,54 @@ const AdminPage = () => {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {tab === 'dashboard' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {statCards.map((s) => (
-              <div key={s.label} style={{ background: '#F8F9FA', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: `${s.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <s.icon size={18} color={s.color} />
-                  </div>
-                  <span style={{ fontSize: 22, fontWeight: 700, color: Colors.textPrimary }}>{s.value}</span>
-                </div>
-                <span style={{ fontSize: 12, color: Colors.textSecondary }}>{s.label}</span>
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <StatCard label="Total Users" value={stats?.totalUsers || 0} icon={Users} color="#075E54"
+                subtitle={`${stats?.activeUsers || 0} active this week`}
+                trend={stats?.totalUsers > 0 ? Math.round((stats?.usersThisWeek || 0) / stats?.totalUsers * 100) : 0} />
+              <StatCard label="Joined Today" value={stats?.usersToday || 0} icon={UserPlus} color="#128C7E" />
+              <StatCard label="Active Users" value={stats?.activeUsers || 0} icon={Activity} color="#34B7F1"
+                subtitle={stats?.totalUsers > 0 ? `${Math.round((stats?.activeUsers || 0) / (stats?.totalUsers || 1) * 100)}% of total` : ''} />
+              <StatCard label="Banned" value={stats?.bannedUsers || 0} icon={Ban} color="#E53935" />
+            </div>
+
+            <SectionTitle><BarChart3 size={14} /> Messages</SectionTitle>
+            <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 16 }}>
+              <BarChart data={[
+                { label: 'DMs', value: stats?.totalMessages || 0, color: '#34B7F1' },
+                { label: 'Groups', value: stats?.totalGroupMessages || 0, color: '#25D366' },
+              ]} />
+              <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 8, fontSize: 11, color: Colors.textHint }}>
+                <span>Today: {stats?.messagesToday || 0} DMs</span>
+                <span>Today: {stats?.groupMessagesToday || 0} groups</span>
               </div>
-            ))}
+            </div>
+
+            <SectionTitle><MessageSquare size={14} /> Engagement</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <MiniDonut value={stats?.activeUsers || 0} total={stats?.totalUsers || 1} color="#25D366" />
+                <span style={{ fontSize: 11, color: Colors.textSecondary }}>Active Rate</span>
+              </div>
+              <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <MiniDonut value={stats?.verifiedUsers || 0} total={stats?.totalUsers || 1} color="#128C7E" />
+                <span style={{ fontSize: 11, color: Colors.textSecondary }}>Verified Users</span>
+              </div>
+            </div>
+
+            <SectionTitle><Group size={14} /> Communities</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <StatCard label="Conversations" value={stats?.totalConversations || 0} icon={MessageCircle} color="#34B7F1" />
+              <StatCard label="Groups" value={stats?.totalGroups || 0} icon={Group} color="#25D366" />
+              <StatCard label="Channels" value={stats?.totalChannels || 0} icon={Radio} color="#E91E63" />
+              <StatCard label="Channel Posts" value={stats?.totalChannelPosts || 0} icon={FileText} color="#FB8C00" />
+            </div>
+
+            <SectionTitle><Shield size={14} /> Admin & Verification</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <StatCard label="Admins" value={stats?.adminCount || 0} icon={Shield} color="#6D4C41" />
+              <StatCard label="Verified Users" value={stats?.verifiedUsers || 0} icon={BadgeCheck} color="#128C7E" />
+            </div>
           </div>
         )}
 
