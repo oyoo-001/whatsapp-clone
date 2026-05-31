@@ -1,4 +1,4 @@
-const { User, Message, Group, GroupMessage, SupportTicket, SupportMessage, Broadcast, BroadcastRead } = require("../models");
+const { User, Message, Group, GroupMessage, SupportTicket, SupportMessage, Broadcast, BroadcastRead, Channel, ChannelFollower } = require("../models");
 const { Op, Sequelize } = require("sequelize");
 
 exports.getStats = async (req, res) => {
@@ -416,5 +416,39 @@ exports.sendSupportMessage = async (req, res) => {
   } catch (error) {
     console.error('Send support message error:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+};
+
+exports.listChannels = async (req, res) => {
+  try {
+    const channels = await Channel.findAll({
+      include: [
+        { model: User, as: 'creator', attributes: ['id', 'username'] },
+        { model: ChannelFollower, as: 'followers', attributes: ['userId'] },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+    res.json({
+      channels: channels.map(ch => ({
+        ...ch.toJSON(),
+        followerCount: ch.followers?.length || 0,
+      })),
+    });
+  } catch (error) {
+    console.error('List channels error:', error);
+    res.status(500).json({ error: 'Failed to list channels' });
+  }
+};
+
+exports.verifyChannel = async (req, res) => {
+  try {
+    const channel = await Channel.findByPk(req.params.channelId);
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    channel.isVerified = !channel.isVerified;
+    await channel.save();
+    res.json({ channel: { id: channel.id, isVerified: channel.isVerified } });
+  } catch (error) {
+    console.error('Verify channel error:', error);
+    res.status(500).json({ error: 'Failed to verify channel' });
   }
 };

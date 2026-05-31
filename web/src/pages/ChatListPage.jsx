@@ -669,11 +669,21 @@ const ChatListPage = () => {
               scrollbarWidth: "none", msOverflowStyle: "none",
             }}>
               {displayGroups.map((group) => {
-                const hasUnviewed = group.statuses?.length > 0;
-                const latest = group.statuses?.[0];
-                const gradient = latest?.backgroundColor
-                  ? `linear-gradient(135deg, ${latest.backgroundColor}, ${latest.backgroundColor}dd)`
-                  : "linear-gradient(135deg, #25D366, #128C7E)";
+                const statuses = group.statuses || [];
+                const n = statuses.length;
+                const allViewed = n > 0 && statuses.every(s => s.viewed);
+                const ringBackground = (() => {
+                  if (n === 0) return "#E9EDEF";
+                  if (allViewed) return "#E9EDEF";
+                  const seg = 360 / n;
+                  const stops = statuses.map((s, i) => {
+                    const color = s.viewed ? "#E9EDEF" : (s.backgroundColor || "#25D366");
+                    const start = i * seg;
+                    const end = (i + 1) * seg;
+                    return `${color} ${start}deg ${end}deg`;
+                  });
+                  return `conic-gradient(${stops.join(", ")})`;
+                })();
                 return (
                   <div key={group.user?.id || 'unknown'} style={{
                     display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
@@ -688,7 +698,7 @@ const ChatListPage = () => {
                     }}>
                       <div style={{
                         width: 56, height: 56, borderRadius: "50%", padding: 3,
-                        background: hasUnviewed ? gradient : "#E9EDEF",
+                        background: ringBackground,
                         display: "flex", alignItems: "center", justifyContent: "center",
                         flexShrink: 0, position: 'relative',
                       }}>

@@ -31,9 +31,10 @@ const Channel = sequelize.define('Channel', {
     allowNull: true,
     unique: true,
   },
-}, {
-  timestamps: true,
-  tableName: 'Channels',
+  isVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
 });
 
 module.exports = Channel;

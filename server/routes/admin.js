@@ -8,6 +8,8 @@ router.get('/users', auth, adminAuth, adminController.listUsers);
 router.put('/users/:userId/ban', auth, adminAuth, adminController.banUser);
 router.put('/users/:userId/make-admin', auth, adminAuth, adminController.makeAdmin);
 router.put('/users/:userId/verify', auth, adminAuth, adminController.verifyUser);
+router.get('/channels', auth, adminAuth, adminController.listChannels);
+router.put('/channels/:channelId/verify', auth, adminAuth, adminController.verifyChannel);
 router.post('/broadcast', auth, adminAuth, adminController.broadcastMessage);
 router.get('/broadcasts', auth, adminController.getBroadcasts);
 router.delete('/broadcast/:id', auth, adminAuth, adminController.deleteBroadcast);

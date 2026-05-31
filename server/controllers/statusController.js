@@ -56,6 +56,13 @@ exports.getStatusFeed = async (req, res) => {
       order: [['createdAt', 'DESC']],
     });
 
+    const statusIds = statuses.map(s => s.id);
+    const views = await StatusView.findAll({
+      where: { statusId: statusIds, viewerId: req.user.id },
+      attributes: ['statusId'],
+    });
+    const viewedSet = new Set(views.map(v => v.statusId));
+
     const grouped = {};
     statuses.forEach(s => {
       const uid = s.userId;
@@ -65,7 +72,9 @@ exports.getStatusFeed = async (req, res) => {
           statuses: [],
         };
       }
-      grouped[uid].statuses.push(s);
+      const plain = s.toJSON();
+      plain.viewed = s.userId === req.user.id || viewedSet.has(s.id);
+      grouped[uid].statuses.push(plain);
     });
 
     res.json({ statusGroups: Object.values(grouped) });

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, MessageSquare, Group, BarChart3,
   Ban, Shield, Send, Search, X, BadgeCheck, Trash2, RefreshCw, Clock, CheckCircle2, MessageCircle,
-  FileText, Image, Music, Eye,
+  FileText, Image, Music, Eye, Radio, Check,
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import { adminAPI, uploadAPI } from '../services/api';
@@ -13,6 +13,7 @@ import { Colors } from '../styles/theme';
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { key: 'users', label: 'Users', icon: Users },
+  { key: 'channels', label: 'Channels', icon: Radio },
   { key: 'broadcast', label: 'Broadcast', icon: Send },
   { key: 'support', label: 'Support', icon: MessageSquare },
 ];
@@ -24,6 +25,8 @@ const AdminPage = () => {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [broadcasts, setBroadcasts] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [bcContent, setBcContent] = useState('');
   const [bcSending, setBcSending] = useState(false);
@@ -87,6 +90,12 @@ const AdminPage = () => {
     try { const { data } = await adminAPI.getBroadcasts(); setBroadcasts(data.broadcasts || []); } catch {}
   };
 
+  const fetchChannels = async () => {
+    setChannelsLoading(true);
+    try { const { data } = await adminAPI.listChannels(); setChannels(data.channels || []); } catch {}
+    setChannelsLoading(false);
+  };
+
   const fetchSupportQueue = async () => {
     try { const { data } = await adminAPI.getSupportQueue(); setSupportQueue(data.tickets || []); } catch {}
   };
@@ -97,7 +106,7 @@ const AdminPage = () => {
 
   const refresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchStats(), fetchUsers(), fetchBroadcasts(), fetchSupportQueue(), fetchSupportHistory()]);
+    await Promise.all([fetchStats(), fetchUsers(), fetchChannels(), fetchBroadcasts(), fetchSupportQueue(), fetchSupportHistory()]);
     setRefreshing(false);
   };
 
@@ -335,6 +344,58 @@ const AdminPage = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {tab === 'channels' && (
+          <div>
+            <div style={{ fontSize: 13, color: Colors.textSecondary, marginBottom: 12 }}>
+              {channels.length} channel{channels.length !== 1 ? 's' : ''} total
+            </div>
+            {channelsLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: Colors.textHint, fontSize: 14 }}>Loading...</div>
+            ) : channels.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: Colors.textHint, fontSize: 14 }}>No channels found</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {channels.map((ch) => (
+                  <div key={ch.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
+                    borderBottom: '1px solid #F0F2F5',
+                  }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 10, background: '#E8F5E9', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    }}>
+                      {ch.avatar ? <img src={ch.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <Radio size={18} color={Colors.primary} />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: Colors.textPrimary, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {ch.name}
+                        {ch.isVerified && <BadgeCheck size={14} color={Colors.accent} />}
+                      </div>
+                      <div style={{ fontSize: 12, color: Colors.textHint }}>
+                        {ch.followerCount || 0} followers · by {ch.creator?.username || 'unknown'} · {new Date(ch.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button onClick={async () => {
+                      try {
+                        await adminAPI.verifyChannel(ch.id);
+                        setChannels(prev => prev.map(c => c.id === ch.id ? { ...c, isVerified: !c.isVerified } : c));
+                      } catch {}
+                    }} style={{
+                      background: ch.isVerified ? '#E8F5E9' : '#F0F2F5', border: 'none', borderRadius: 8,
+                      padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                      fontSize: 12, color: ch.isVerified ? Colors.primary : Colors.textHint, fontWeight: 500,
+                    }}>
+                      <BadgeCheck size={14} />
+                      {ch.isVerified ? 'Verified' : 'Verify'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
