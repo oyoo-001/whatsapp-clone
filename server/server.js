@@ -25,6 +25,7 @@ const statusRoutes = require("./routes/status");
 const { Channel, Group, User } = require("./models");
 const adminRoutes = require("./routes/admin");
 const supportRoutes = require("./routes/support");
+const systemRoutes = require("./routes/system");
 
 const app = express();
 const server = http.createServer(app);
@@ -185,6 +186,7 @@ app.use("/api/channels", channelRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/system", systemRoutes);
 
 app.get("/", (req, res) => {
   res.json({

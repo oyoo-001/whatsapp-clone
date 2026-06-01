@@ -78,13 +78,23 @@ export const groupsAPI = {
   addMembers: (groupId, userIds) =>
     api.post(`/groups/${groupId}/members`, { userIds }),
   removeMember: (groupId, userId) =>
-    api.delete(`/groups/${groupId}/members/${userId}`),
+    api.delete(`/groups/${groupId}/members`, { data: { userId } }),
   generateInviteCode: (groupId) =>
-    api.post(`/groups/${groupId}/generate-invite`),
+    api.post(`/groups/${groupId}/invite`),
+  generateInvite: (groupId) =>
+    api.post(`/groups/${groupId}/invite`),
   regenerateInviteCode: (groupId) =>
     api.post(`/groups/${groupId}/regenerate-invite`),
   joinByInvite: (code) => api.post("/groups/join", { inviteCode: code }),
   getGroupByInviteCode: (code) => api.get(`/groups/invite/${code}`),
+  getMessages: (groupId, params) =>
+    api.get(`/groups/${groupId}/messages`, { params }),
+  sendMessage: (groupId, data) =>
+    api.post(`/groups/${groupId}/messages`, data),
+  markAsRead: (groupId) =>
+    api.put(`/groups/${groupId}/read`),
+  deleteMessage: (groupId, data) =>
+    api.delete(`/groups/${groupId}/messages`, { data }),
 };
 
 export const adminAPI = {
@@ -119,6 +129,10 @@ export const supportAPI = {
 };
 
 export const getIceServers = () => api.get("/ice-servers");
+
+export const systemAPI = {
+  checkVersion: () => api.get("/system/version"),
+};
 
 export const channelsAPI = {
   create: (data) => api.post("/channels", data),

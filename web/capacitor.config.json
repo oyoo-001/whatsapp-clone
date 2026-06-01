@@ -1,5 +1,10 @@
 {
   "appId": "com.tuchat.app",
   "appName": "TuChat",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
 }

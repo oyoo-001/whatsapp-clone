@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { App as CapApp } from '@capacitor/app';
 import { ToastProvider } from './components/Toast';
 import useAuthStore from './stores/authStore';
 import useChatStore from './stores/chatStore';
 import socketService from './services/socket';
+import { systemAPI } from './services/api';
+import ForceUpdateModal from './components/ForceUpdateModal';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ChatListPage from './pages/ChatListPage';
@@ -28,12 +31,54 @@ import './styles/global.css';
 
 const App = () => {
   const { initialLoading, loadUser } = useAuthStore();
+  const [updateRequired, setUpdateRequired] = useState(false);
+  const [updateUrl, setUpdateUrl] = useState('');
 
   useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        // 1. Get current version (Native or Web)
+        let currentVersion = '1.0.0';
+        try {
+          const info = await CapApp.getInfo();
+          currentVersion = info.version;
+        } catch (e) {
+          // Fallback if not running on native
+        }
+
+        // 2. Fetch required version from backend
+        const response = await systemAPI.checkVersion();
+        const { minVersion, downloadUrl } = response.data;
+
+        // 3. Compare (simple version comparison)
+        if (minVersion && isUpdateRequired(currentVersion, minVersion)) {
+          setUpdateRequired(true);
+          setUpdateUrl(downloadUrl);
+        }
+      } catch (error) {
+        console.error('Failed to check version:', error);
+      }
+    };
+
+    checkVersion();
+
     const saved = localStorage.getItem('theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
     loadUser();
   }, []);
+
+  // Helper to compare semver versions
+  const isUpdateRequired = (current, min) => {
+    const currParts = current.split('.').map(Number);
+    const minParts = min.split('.').map(Number);
+    for (let i = 0; i < Math.max(currParts.length, minParts.length); i++) {
+      const curr = currParts[i] || 0;
+      const m = minParts[i] || 0;
+      if (curr < m) return true;
+      if (curr > m) return false;
+    }
+    return false;
+  };
 
   useEffect(() => {
     if (!useAuthStore.getState().isAuthenticated) return;
@@ -55,6 +100,7 @@ const App = () => {
 
   return (
     <ToastProvider>
+      {updateRequired && <ForceUpdateModal updateUrl={updateUrl} />}
       <BrowserRouter>
         <InvitePreviewModal />
         <Routes>

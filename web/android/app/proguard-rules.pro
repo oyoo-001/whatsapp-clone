@@ -14,8 +14,25 @@
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+-keepattributes SourceFile,LineNumberTable
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor specific rules
+-keep class com.getcapacitor.** { *; }
+-keep  class fqcn.of.javascript.interface.for.webview {
+   public *;
+}
+
+# Retrofit/OkHttp/Gson (if used natively)
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn okio.**
+-dontwarn javax.annotation.**
+-keep class com.google.gson.** { *; }
+-keep class retrofit2.** { *; }
+
+# Preserve line numbers for debugging
+-keepattributes SourceFile,LineNumberTable
