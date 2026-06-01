@@ -802,7 +802,7 @@ const SettingsPage = () => {
           <Info size={18} />,
           "About",
           "App version and details",
-          <div style={{ fontSize: 13, color: Colors.textHint }}>1.0.0</div>,
+          <div style={{ fontSize: 13, color: Colors.textHint }}>{version}</div>,
           () => navigate("/about"),
         )}
 

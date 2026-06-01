@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_PREFIX = "https://tuconnect.onrender.com";
+const API_PREFIX = "http://tuconnect.onrender.com";
 
 const api = axios.create({
   baseURL: `${API_PREFIX}/api`,
@@ -79,20 +79,16 @@ export const groupsAPI = {
     api.post(`/groups/${groupId}/members`, { userIds }),
   removeMember: (groupId, userId) =>
     api.delete(`/groups/${groupId}/members`, { data: { userId } }),
-  generateInviteCode: (groupId) =>
-    api.post(`/groups/${groupId}/invite`),
-  generateInvite: (groupId) =>
-    api.post(`/groups/${groupId}/invite`),
+  generateInviteCode: (groupId) => api.post(`/groups/${groupId}/invite`),
+  generateInvite: (groupId) => api.post(`/groups/${groupId}/invite`),
   regenerateInviteCode: (groupId) =>
     api.post(`/groups/${groupId}/regenerate-invite`),
   joinByInvite: (code) => api.post("/groups/join", { inviteCode: code }),
   getGroupByInviteCode: (code) => api.get(`/groups/invite/${code}`),
   getMessages: (groupId, params) =>
     api.get(`/groups/${groupId}/messages`, { params }),
-  sendMessage: (groupId, data) =>
-    api.post(`/groups/${groupId}/messages`, data),
-  markAsRead: (groupId) =>
-    api.put(`/groups/${groupId}/read`),
+  sendMessage: (groupId, data) => api.post(`/groups/${groupId}/messages`, data),
+  markAsRead: (groupId) => api.put(`/groups/${groupId}/read`),
   deleteMessage: (groupId, data) =>
     api.delete(`/groups/${groupId}/messages`, { data }),
 };

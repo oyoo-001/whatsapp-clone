@@ -7,7 +7,7 @@ import useChatStore from './stores/chatStore';
 import useGroupStore from './stores/groupStore';
 import socketService from './services/socket';
 import { systemAPI } from './services/api';
-import ForceUpdateModal from './components/ForceUpdateModal';
+import ForceUpdatePage from './pages/ForceUpdatePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ChatListPage from './pages/ChatListPage';
@@ -46,7 +46,7 @@ const App = () => {
         const { minVersion, downloadUrl } = response.data;
 
         if (minVersion && isUpdateRequired(currentVersion, minVersion)) {
-          setUpdateInfo({ required: true, downloadUrl });
+          setUpdateInfo({ required: true, downloadUrl, currentVersion, requiredVersion: minVersion });
         }
       } catch (error) {
         console.error('Failed to check version:', error);
@@ -104,9 +104,16 @@ const App = () => {
 
   if (initialLoading) return <LoadingPage />;
 
+  if (updateInfo.required) return (
+    <ForceUpdatePage
+      updateUrl={updateInfo.downloadUrl}
+      currentVersion={updateInfo.currentVersion}
+      requiredVersion={updateInfo.requiredVersion}
+    />
+  );
+
   return (
     <ToastProvider>
-      {updateInfo.required && <ForceUpdateModal updateUrl={updateInfo.downloadUrl} />}
       <BrowserRouter>
         <InvitePreviewModal />
         <Routes>

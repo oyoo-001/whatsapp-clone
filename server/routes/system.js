@@ -3,8 +3,8 @@ const router = express.Router();
 
 router.get("/version", (req, res) => {
   res.json({
-    minVersion: "1.0.7",
-    downloadUrl: "https://tuconnect.onrender.com/download-latest-apk",
+    minVersion: "1.0.8",
+    downloadUrl: "https://t.me/tuchatapp",
   });
 });
 
