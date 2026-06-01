@@ -5,6 +5,13 @@
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_name",
+      "iconColor": "#00A884"
     }
   },
   "server": {

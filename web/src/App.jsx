@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { App as CapApp } from "@capacitor/app";
 import { ToastProvider } from "./components/Toast";
 import useAuthStore from "./stores/authStore";
@@ -31,7 +31,62 @@ import BannedSupportPage from "./pages/BannedSupportPage";
 import LoadingPage from "./pages/LoadingPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ActiveCallBanner from "./components/ActiveCallBanner";
+import notificationService from "./services/notificationService";
+import useContactStore from "./stores/contactStore";
 import "./styles/global.css";
+
+const NavigateSetter = () => {
+  const navigate = useNavigate();
+
+  const handleQueuedCall = () => {
+    const queued = notificationService.getQueuedCall();
+    if (queued) {
+      const { channelName, from, callType } = queued;
+      notificationService.clearQueuedCall();
+      navigate(`/voice-call/${channelName}`, {
+        state: {
+          remoteUserId: from,
+          channelName,
+          callType: callType || 'voice',
+          isCaller: false,
+        },
+      });
+    }
+  };
+
+  window.__acceptCall = (channelName, callerId) => {
+    notificationService.clearQueuedCall();
+    notificationService.dismissCall(callerId);
+    if (channelName) {
+      navigate(`/voice-call/${channelName}`, {
+        state: {
+          remoteUserId: callerId,
+          channelName,
+          callType: 'voice',
+          isCaller: false,
+        },
+      });
+    }
+  };
+
+  window.__rejectCall = (channelName, callerId) => {
+    notificationService.clearQueuedCall();
+    notificationService.dismissCall(callerId);
+    socketService.emit("call:end", { to: callerId });
+  };
+
+  window.__openChat = (chatUserId) => {
+    if (chatUserId > 0) {
+      navigate(`/chat/${chatUserId}`);
+    }
+  };
+
+  useEffect(() => {
+    handleQueuedCall();
+  }, []);
+
+  return null;
+};
 
 const App = () => {
   const { initialLoading, loadUser, setUpdateInfo, updateInfo } =
@@ -67,6 +122,7 @@ const App = () => {
     const saved = localStorage.getItem("theme");
     if (saved) document.documentElement.setAttribute("data-theme", saved);
     loadUser();
+    notificationService.init();
   }, []);
 
   // Helper to compare semver versions
@@ -117,6 +173,8 @@ const App = () => {
     };
   }, []);
 
+  const navigateRef = useRef(null);
+
   if (initialLoading) return <LoadingPage />;
 
   if (updateInfo.required)
@@ -131,6 +189,7 @@ const App = () => {
   return (
     <ToastProvider>
       <BrowserRouter>
+        <NavigateSetter />
         <ActiveCallBanner />
         <InvitePreviewModal />
         <Routes>

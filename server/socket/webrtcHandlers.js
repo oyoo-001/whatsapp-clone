@@ -1,4 +1,5 @@
 const { GroupMember } = require('../models');
+const { sendCallPush } = require('../services/pushService');
 
 const connectedUsers = new Map();
 const rooms = new Map();
@@ -58,6 +59,7 @@ const webrtcHandlers = (io, socket) => {
       io.to(socket.id).emit('call:ringing', { to, startedAt });
     } else {
       io.to(socket.id).emit('call:user-offline', { to });
+      sendCallPush(to, socket.userData?.username || 'Unknown', channelName, callType);
     }
   });
 

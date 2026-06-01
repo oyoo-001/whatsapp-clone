@@ -1,4 +1,5 @@
 const { sequelize } = require('./config/database');
+const DeviceToken = require('./models/DeviceToken');
 
 const requiredColumns = {
   Users: [
@@ -116,6 +117,12 @@ const runMigrations = async () => {
   if (added > 0) console.log(`Added ${added} missing column(s)`);
   const idxAdded = await addMissingIndexes();
   if (idxAdded > 0) console.log(`Created ${idxAdded} missing index(es)`);
+  try {
+    await DeviceToken.sync({ alter: true });
+    console.log('DeviceToken table synced');
+  } catch (err) {
+    console.error('DeviceToken sync error:', err.message);
+  }
   if (removed === 0 && added === 0 && idxAdded === 0) console.log('Schema is up to date');
 };
 

@@ -67,7 +67,7 @@ class WebRTCService {
     this.isAudioOnly = audioOnly;
 
     const mediaConstraints = constraints || {
-      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 },
+      audio: true, // Use basic 'true' for best compatibility across devices
       video: audioOnly ? false : {
         width: { ideal: 640 },
         height: { ideal: 480 },

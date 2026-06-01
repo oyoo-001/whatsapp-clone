@@ -67,4 +67,8 @@ Status.hasMany(StatusView, { foreignKey: 'statusId', as: 'views' });
 StatusView.belongsTo(Status, { foreignKey: 'statusId', as: 'status' });
 StatusView.belongsTo(User, { foreignKey: 'viewerId', as: 'viewer' });
 
-module.exports = { User, Message, CallLog, Contact, Group, GroupMember, GroupMessage, SupportTicket, SupportMessage, Broadcast, BroadcastRead, Channel, ChannelFollower, ChannelPost, Status, StatusView };
+const DeviceToken = require('./DeviceToken');
+User.hasMany(DeviceToken, { foreignKey: 'userId', as: 'deviceTokens' });
+DeviceToken.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+module.exports = { User, Message, CallLog, Contact, Group, GroupMember, GroupMessage, SupportTicket, SupportMessage, Broadcast, BroadcastRead, Channel, ChannelFollower, ChannelPost, Status, StatusView, DeviceToken };

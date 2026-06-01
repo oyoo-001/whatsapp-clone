@@ -25,6 +25,23 @@
 
         </activity>
 
+        <activity
+            android:name=".IncomingCallActivity"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:turnScreenOn="true"
+            android:showWhenLocked="true"
+            android:showOnLockScreen="true"
+            android:exported="false">
+        </activity>
+
+        <service
+            android:name=".ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false">
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -47,7 +64,12 @@
 
     <!-- Microphone -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
+
+    <!-- Bluetooth (for audio routing) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Storage/Files -->
     <!-- For Android 12 and below -->
@@ -61,10 +83,13 @@
     <!-- Android 14+ Partial Access -->
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
-    <!-- Notifications -->
+    <!-- Notifications and Waking Device -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Optional: Vibration and Network State -->
-    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>

@@ -1,5 +1,6 @@
 const { Message, User, Contact, Broadcast, BroadcastRead } = require('../models');
 const { Op, Sequelize } = require('sequelize');
+const { sendMessagePush } = require('../services/pushService');
 
 exports.sendMessage = async (req, res) => {
   try {
@@ -67,6 +68,8 @@ exports.sendMessage = async (req, res) => {
         if (senderSocket) {
           io.to(senderSocket).emit('chat:delivered', { messageId: message.id });
         }
+      } else {
+        sendMessagePush(req.user, receiverId, content, messageType);
       }
     }
 

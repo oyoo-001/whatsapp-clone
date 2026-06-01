@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0D1117"
+    android:padding="32dp">
+
+    <ImageView
+        android:id="@+id/callerAvatar"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_marginBottom="24dp"
+        android:src="@mipmap/ic_launcher"
+        android:scaleType="centerCrop"
+        android:contentDescription="Avatar" />
+
+    <TextView
+        android:id="@+id/callerName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Unknown"
+        android:textSize="28sp"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/callStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Incoming call..."
+        android:textSize="16sp"
+        android:textColor="#8A8A8A"
+        android:layout_marginBottom="48dp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <ImageButton
+            android:id="@+id/rejectBtn"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_margin="24dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:background="@drawable/circle_button_red"
+            android:scaleType="center"
+            android:padding="16dp"
+            android:contentDescription="Reject call" />
+
+        <ImageButton
+            android:id="@+id/acceptBtn"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_margin="24dp"
+            android:src="@android:drawable/ic_menu_call"
+            android:background="@drawable/circle_button_green"
+            android:scaleType="center"
+            android:padding="16dp"
+            android:contentDescription="Accept call" />
+
+    </LinearLayout>
+
+</LinearLayout>
