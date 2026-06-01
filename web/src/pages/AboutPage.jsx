@@ -1,7 +1,15 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { ArrowLeft, MessageCircle, Coffee, Heart } from "lucide-react";
+import {
+  ArrowLeft,
+  MessageCircle,
+  Coffee,
+  Heart,
+  RefreshCw,
+} from "lucide-react";
+import { App as CapApp } from "@capacitor/app";
 import { Colors } from "../styles/theme";
+import { systemAPI } from "../services/api";
 
 // ⚠️ Replace with your actual Paystack Public Key
 const PAYSTACK_PUBLIC_KEY = "pk_live_68e35e25956f2b4edbec5116d86f9787fb6bffb4";
@@ -73,6 +81,52 @@ const AboutPage = () => {
   const navigate = useNavigate();
   const [donationAmount, setDonationAmount] = useState("");
   const [donating, setDonating] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [appVersion, setAppVersion] = useState("1.0.6");
+
+  useEffect(() => {
+    const getVersion = async () => {
+      try {
+        const info = await CapApp.getInfo();
+        setAppVersion(info.version);
+      } catch (e) {
+        console.log("Not running on native");
+      }
+    };
+    getVersion();
+  }, []);
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const response = await systemAPI.checkVersion();
+      const { minVersion, downloadUrl } = response.data;
+
+      const isUpdateRequired = (current, min) => {
+        const currParts = current.split(".").map(Number);
+        const minParts = min.split(".").map(Number);
+        for (let i = 0; i < Math.max(currParts.length, minParts.length); i++) {
+          const curr = currParts[i] || 0;
+          const m = minParts[i] || 0;
+          if (curr < m) return true;
+          if (curr > m) return false;
+        }
+        return false;
+      };
+
+      if (isUpdateRequired(appVersion, minVersion)) {
+        if (confirm(`New version ${minVersion} is available. Update now?`)) {
+          window.open(downloadUrl, "_blank");
+        }
+      } else {
+        alert("You are on the latest version!");
+      }
+    } catch (error) {
+      alert("Failed to check for updates. Please try again later.");
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   // Load Paystack inline script once
   useEffect(() => {
@@ -241,11 +295,38 @@ const AboutPage = () => {
           style={{
             fontSize: 14,
             color: Colors.textSecondary,
-            margin: "0 0 24px",
+            margin: "0 0 16px",
           }}
         >
-          Version 1.2.0
+          Version {appVersion}
         </p>
+
+        {/* Check for Update Button */}
+        <button
+          onClick={handleCheckUpdate}
+          disabled={checkingUpdate}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 16px",
+            borderRadius: 10,
+            background: Colors.primary + "15",
+            color: Colors.primary,
+            border: "none",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: checkingUpdate ? "not-allowed" : "pointer",
+            marginBottom: 24,
+            transition: "all 0.2s",
+          }}
+        >
+          <RefreshCw
+            size={14}
+            className={checkingUpdate ? "animate-spin" : ""}
+          />
+          {checkingUpdate ? "Checking..." : "Check for Update"}
+        </button>
 
         {/* Description */}
         <div

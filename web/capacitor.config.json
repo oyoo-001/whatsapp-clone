@@ -6,5 +6,12 @@
     "CapacitorHttp": {
       "enabled": true
     }
+  },
+  "server": {
+    "allowNavigation": [
+      "*.paystack.com",
+      "*.paystack.co",
+      "checkout.paystack.com"
+    ]
   }
 }

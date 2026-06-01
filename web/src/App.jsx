@@ -4,6 +4,7 @@ import { App as CapApp } from '@capacitor/app';
 import { ToastProvider } from './components/Toast';
 import useAuthStore from './stores/authStore';
 import useChatStore from './stores/chatStore';
+import useGroupStore from './stores/groupStore';
 import socketService from './services/socket';
 import { systemAPI } from './services/api';
 import ForceUpdateModal from './components/ForceUpdateModal';
@@ -95,6 +96,19 @@ const App = () => {
 
     return () => { u1(); u2(); u3(); };
   }, [useAuthStore.getState().isAuthenticated]);
+
+  useEffect(() => {
+    const listener = CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) return;
+      const token = useAuthStore.getState().token;
+      if (token) {
+        socketService.connect(token);
+        useChatStore.getState().fetchConversations(true);
+        useGroupStore.getState().fetchGroups();
+      }
+    });
+    return () => { listener.then((h) => h.remove()); };
+  }, []);
 
   if (initialLoading) return <LoadingPage />;
 

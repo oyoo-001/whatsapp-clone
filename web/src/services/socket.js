@@ -17,6 +17,8 @@ class SocketService {
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
     this.socket.on('connect', () => {
       this._reconnectCallbacks.forEach((cb) => cb());
