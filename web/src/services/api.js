@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_PREFIX = import.meta.env.VITE_API_URL || "http://192.168.0.102:5000";
+const API_PREFIX = "https://tuconnect.onrender.com";
 
 const api = axios.create({
   baseURL: `${API_PREFIX}/api`,
