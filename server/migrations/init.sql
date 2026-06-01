@@ -20,10 +20,100 @@ CREATE TABLE IF NOT EXISTS Users (
    INDEX idx_status (status)
  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
- -- Insert system user for broadcasts
- INSERT INTO Users (id, username, phoneNumber, avatar, status, isOnline, lastSeen, isAdmin, isBanned, createdAt, updatedAt)
- SELECT * FROM (SELECT 0, 'System', NULL, NULL, NULL, false, NULL, false, false, NOW(), NOW()) AS tmp
- WHERE NOT EXISTS (SELECT id FROM Users WHERE id = 0);
+-- Insert system user for broadcasts
+  INSERT INTO Users (id, username, phoneNumber, avatar, status, isOnline, lastSeen, isAdmin, isBanned, createdAt, updatedAt)
+  SELECT * FROM (SELECT 0, 'System', NULL, NULL, NULL, false, NULL, false, false, NOW(), NOW()) AS tmp
+  WHERE NOT EXISTS (SELECT id FROM Users WHERE id = 0);
+
+CREATE TABLE IF NOT EXISTS Statuses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  content TEXT,
+  mediaUrl VARCHAR(500),
+  mediaType VARCHAR(20) DEFAULT 'text',
+  backgroundColor VARCHAR(20),
+  expiresAt DATETIME NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES Users(id) ON DELETE CASCADE,
+  INDEX idx_user_expires (userId, expiresAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS StatusViews (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  statusId INT NOT NULL,
+  viewerId INT NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (statusId) REFERENCES Statuses(id) ON DELETE CASCADE,
+  FOREIGN KEY (viewerId) REFERENCES Users(id) ON DELETE CASCADE,
+  UNIQUE INDEX idx_status_viewer (statusId, viewerId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS Channels (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  avatar VARCHAR(500),
+  createdBy INT NOT NULL,
+  inviteCode VARCHAR(20) UNIQUE,
+  isVerified BOOLEAN DEFAULT false,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (createdBy) REFERENCES Users(id) ON DELETE CASCADE,
+  INDEX idx_channel_invite (inviteCode)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ChannelFollowers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  channelId INT NOT NULL,
+  userId INT NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (channelId) REFERENCES Channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES Users(id) ON DELETE CASCADE,
+  UNIQUE INDEX idx_channel_user (channelId, userId),
+  INDEX idx_channel_follower_user (userId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ChannelPosts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  channelId INT NOT NULL,
+  senderId INT NOT NULL,
+  content TEXT,
+  messageType VARCHAR(20) DEFAULT 'text',
+  fileUrl VARCHAR(500),
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (channelId) REFERENCES Channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (senderId) REFERENCES Users(id) ON DELETE CASCADE,
+  INDEX idx_channel_posts (channelId, createdAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS SupportTickets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  adminId INT,
+  subject VARCHAR(255),
+  status ENUM('open', 'in_progress', 'resolved') DEFAULT 'open',
+  contactPhone VARCHAR(20),
+  isBannedRequest BOOLEAN DEFAULT false,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES Users(id) ON DELETE CASCADE,
+  INDEX idx_ticket_user_status (userId, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS SupportMessages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  ticketId INT NOT NULL,
+  senderId INT NOT NULL,
+  content TEXT NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (ticketId) REFERENCES SupportTickets(id) ON DELETE CASCADE,
+  FOREIGN KEY (senderId) REFERENCES Users(id) ON DELETE CASCADE,
+  INDEX idx_ticket_messages (ticketId, createdAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Messages (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -45,6 +135,8 @@ CREATE TABLE IF NOT EXISTS Messages (
   FOREIGN KEY (receiverId) REFERENCES Users(id) ON DELETE CASCADE,
   FOREIGN KEY (replyToId) REFERENCES Messages(id) ON DELETE SET NULL,
   INDEX idx_sender_receiver (senderId, receiverId),
+  INDEX idx_receiver_read (receiverId, isRead),
+  INDEX idx_sender_receiver_created (senderId, receiverId, createdAt),
   INDEX idx_created_at (createdAt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -103,7 +195,8 @@ CREATE TABLE IF NOT EXISTS GroupMembers (
   joinedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (groupId) REFERENCES `Groups`(id) ON DELETE CASCADE,
   FOREIGN KEY (userId) REFERENCES Users(id) ON DELETE CASCADE,
-  UNIQUE INDEX idx_group_user (groupId, userId)
+  UNIQUE INDEX idx_group_user (groupId, userId),
+  INDEX idx_user_group (userId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS GroupMessages (

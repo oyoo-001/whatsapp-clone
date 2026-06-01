@@ -139,3 +139,13 @@ input:focus { border-color: #075E54 !important; }
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+@keyframes voicePulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.5); opacity: 0.2; }
+}
+
+@keyframes barBounce {
+  from { transform: scaleY(0.4); }
+  to { transform: scaleY(1); }
+}

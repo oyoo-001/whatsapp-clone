@@ -32,6 +32,7 @@ class WebRTCService {
 
     this._cachedVideoTrack = null;
     this._screenTrackInfo = null;
+    this._remoteStreams = new Map();
   }
 
   on(event, cb) {
@@ -134,8 +135,16 @@ class WebRTCService {
 
     pc.ontrack = (event) => {
       log('Track received from', userId, 'kind:', event.track?.kind);
-      if (this._callbacks.onRemoteStream) {
-        this._callbacks.onRemoteStream(userId, event.streams[0], event.track);
+      if (!this._remoteStreams) this._remoteStreams = new Map();
+      let stream = this._remoteStreams.get(userId);
+      if (!stream && event.streams[0]) {
+        stream = event.streams[0];
+        this._remoteStreams.set(userId, stream);
+      } else if (stream && event.track) {
+        stream.addTrack(event.track);
+      }
+      if (this._callbacks.onRemoteStream && stream) {
+        this._callbacks.onRemoteStream(userId, stream);
       }
     };
 
@@ -341,6 +350,7 @@ class WebRTCService {
     this.pendingCandidates.delete(userId);
     this.negotiationLocks.delete(userId);
     this.negotiationRetries.delete(userId);
+    if (this._remoteStreams) this._remoteStreams.delete(userId);
 
     if (this._callbacks.onRemoteLeave) {
       this._callbacks.onRemoteLeave(userId);
@@ -462,6 +472,7 @@ class WebRTCService {
     }
 
     this.channel = null;
+    this._remoteStreams.clear();
     Object.keys(this._callbacks).forEach((key) => {
       this._callbacks[key] = null;
     });

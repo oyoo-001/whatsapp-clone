@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { App as CapApp } from "@capacitor/app";
 import {
   ArrowLeft,
   Shield,
@@ -46,6 +47,13 @@ const SettingsPage = () => {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [pinModal, setPinModal] = useState(null);
   const [pin, setPin] = useState("");
+  const [appVersion, setAppVersion] = useState("1.0.0");
+
+  useEffect(() => {
+    try {
+      CapApp.getInfo().then((info) => setAppVersion(info.version));
+    } catch {}
+  }, []);
   const [pinError, setPinError] = useState("");
   const [pinMode, setPinMode] = useState("set");
   const [editing, setEditing] = useState(null);
@@ -802,7 +810,7 @@ const SettingsPage = () => {
           <Info size={18} />,
           "About",
           "App version and details",
-          <div style={{ fontSize: 13, color: Colors.textHint }}>{version}</div>,
+          <div style={{ fontSize: 13, color: Colors.textHint }}>{appVersion}</div>,
           () => navigate("/about"),
         )}
 

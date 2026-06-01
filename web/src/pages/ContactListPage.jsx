@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, UserPlus, X, User, MessageCircle, Plus, Trash2 } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, Search, UserPlus, X, User, MessageCircle, Plus, Trash2, Users, Circle, Radio } from 'lucide-react';
 import useContactStore from '../stores/contactStore';
 import AlertDialog from '../components/AlertDialog';
 import { useToast } from '../components/Toast';
 import { usersAPI } from '../services/api';
 import { Colors } from '../styles/theme';
+
+const TABS = [
+  { key: "chat", label: "Chat", icon: MessageCircle },
+  { key: "contacts", label: "Contacts", icon: Users },
+  { key: "status", label: "Status", icon: Circle },
+  { key: "channel", label: "Channel", icon: Radio },
+];
 
 const ContactListPage = () => {
   const { contacts, fetchContacts, addContact, removeContact } = useContactStore();
@@ -15,6 +22,7 @@ const ContactListPage = () => {
   const [searching, setSearching] = useState(false);
   const [dialog, setDialog] = useState({ open: false });
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
 
   useEffect(() => { fetchContacts().then(() => setLoading(false)); }, []);
@@ -62,7 +70,7 @@ const ContactListPage = () => {
   const getHue = (id) => (id * 60) % 360;
 
   return (
-    <div style={{ minHeight: '100vh', background: Colors.white, maxWidth: 480, margin: '0 auto', borderLeft: '0.5px solid #E9EDEF', borderRight: '0.5px solid #E9EDEF' }}>
+    <div style={{ minHeight: '100vh', background: Colors.white, maxWidth: 480, margin: '0 auto', borderLeft: '0.5px solid #E9EDEF', borderRight: '0.5px solid #E9EDEF', display: 'flex', flexDirection: 'column' }}>
       <header style={{
         background: Colors.primary, padding: '14px 16px', display: 'flex',
         alignItems: 'center', gap: 12, paddingTop: 20,
@@ -192,6 +200,21 @@ const ContactListPage = () => {
         </div>
       </div>
 
+      <div style={footerContainerStyle}>
+        <div style={footerNavStyle}>
+          {TABS.map(({ key, label, icon: Icon }) => {
+            const isActive = key === "contacts";
+            const onClick = key === "contacts" ? null : () => navigate(key === "chat" ? "/" : `/${key}`);
+            return (
+              <button key={key} onClick={onClick} disabled={key === "contacts"} style={footerBtnStyle(isActive)}>
+                <Icon size={22} color={isActive ? Colors.white : Colors.textSecondary} />
+                <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, color: isActive ? Colors.white : Colors.textSecondary }}>{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <AlertDialog {...dialog} />
     </div>
   );
@@ -206,5 +229,35 @@ const actionBtn = {
   background: '#F0F2F5', border: 'none', borderRadius: 8, padding: 8,
   cursor: 'pointer', color: Colors.textSecondary, display: 'flex',
 };
+
+const footerContainerStyle = {
+  padding: "8px 16px 12px",
+  background: Colors.white,
+  borderTop: `0.5px solid ${Colors.border}`,
+};
+
+const footerNavStyle = {
+  display: "flex",
+  justifyContent: "space-around",
+  alignItems: "center",
+  background: Colors.lighterGrey,
+  borderRadius: 20,
+  padding: "6px 8px",
+};
+
+const footerBtnStyle = (isActive) => ({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 2,
+  flex: 1,
+  padding: "8px 0",
+  borderRadius: 14,
+  background: isActive ? Colors.primary : "transparent",
+  border: "none",
+  cursor: isActive ? "default" : "pointer",
+  transition: "all 0.2s",
+  opacity: isActive ? 1 : 0.85,
+});
 
 export default ContactListPage;

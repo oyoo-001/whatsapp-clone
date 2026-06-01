@@ -16,9 +16,11 @@ class SocketService {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
+      reconnectionDelay: 200,
+      reconnectionDelayMax: 2000,
+      randomizationFactor: 0.2,
+      timeout: 10000,
+      closeOnBeforeunload: true,
     });
     this.socket.on('connect', () => {
       this._reconnectCallbacks.forEach((cb) => cb());

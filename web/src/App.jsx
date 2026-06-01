@@ -15,6 +15,8 @@ import ChatPage from "./pages/ChatPage";
 import ProfilePage from "./pages/ProfilePage";
 import ContactListPage from "./pages/ContactListPage";
 import CallPage from "./pages/CallPage";
+import VoiceCallPage from "./pages/VoiceCallPage";
+import VideoCallPage from "./pages/VideoCallPage";
 import GroupCallPage from "./pages/GroupCallPage";
 import CallLogsPage from "./pages/CallLogsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -28,6 +30,7 @@ import InvitePreviewModal from "./components/InvitePreviewModal";
 import BannedSupportPage from "./pages/BannedSupportPage";
 import LoadingPage from "./pages/LoadingPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ActiveCallBanner from "./components/ActiveCallBanner";
 import "./styles/global.css";
 
 const App = () => {
@@ -128,6 +131,7 @@ const App = () => {
   return (
     <ToastProvider>
       <BrowserRouter>
+        <ActiveCallBanner />
         <InvitePreviewModal />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -179,6 +183,22 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <CallPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/voice-call/:channelName"
+            element={
+              <ProtectedRoute>
+                <VoiceCallPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/video-call/:channelName"
+            element={
+              <ProtectedRoute>
+                <VideoCallPage />
               </ProtectedRoute>
             }
           />

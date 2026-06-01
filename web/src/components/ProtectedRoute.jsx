@@ -27,7 +27,7 @@ const ProtectedRoute = ({ children }) => {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (location.pathname.startsWith('/call/') || location.pathname.startsWith('/group-call/')) return;
+    if (location.pathname.startsWith('/call/') || location.pathname.startsWith('/voice-call/') || location.pathname.startsWith('/video-call/') || location.pathname.startsWith('/group-call/')) return;
 
     const unsubIncoming = socketService.on('call:incoming', async ({ from, user, channelName, callType, startedAt }) => {
       playRingtone();
@@ -81,7 +81,8 @@ const ProtectedRoute = ({ children }) => {
     setIncomingCall(null);
     callLogIdRef.current = null;
     socketService.emit('call:accept', { to: callerId, channelName });
-    navigate(`/call/${channelName}`, {
+    const route = callType === 'voice' ? 'voice-call' : 'video-call';
+    navigate(`/${route}/${channelName}`, {
       state: {
         name: incomingCall?.caller?.username,
         callType,

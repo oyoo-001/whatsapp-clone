@@ -41,7 +41,7 @@ const useGroupStore = create((set, get) => ({
   },
 
   addMembers: async (groupId, userIds) => {
-    const { data } = await groupsAPI.addMembers(groupId, { userIds });
+    const { data } = await groupsAPI.addMembers(groupId, userIds);
     return data.members;
   },
 

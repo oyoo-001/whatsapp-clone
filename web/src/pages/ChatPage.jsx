@@ -491,7 +491,8 @@ const ChatPage = () => {
       callLogId = data.callLog.id;
     } catch {}
     socketService.emit('call:start', { to: uid, channelName, callType: type, startedAt });
-    navigate(`/call/${channelName}`, {
+    const route = type === 'voice' ? 'voice-call' : 'video-call';
+    navigate(`/${route}/${channelName}`, {
       state: {
         name: chatUser?.username, callType: type, caller: true,
         remoteUserId: uid, callLogId, startedAt,

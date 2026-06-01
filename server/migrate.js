@@ -77,13 +77,46 @@ const removeDuplicateIndexes = async () => {
   return removed;
 };
 
+const requiredIndexes = [
+  { table: 'Messages', name: 'idx_receiver_read', columns: 'receiverId, isRead' },
+  { table: 'Messages', name: 'idx_sender_receiver_created', columns: 'senderId, receiverId, createdAt' },
+  { table: 'GroupMembers', name: 'idx_user_group', columns: 'userId' },
+  { table: 'Statuses', name: 'idx_user_expires', columns: 'userId, expiresAt' },
+  { table: 'ChannelFollowers', name: 'idx_channel_follower_user', columns: 'userId' },
+  { table: 'SupportTickets', name: 'idx_ticket_user_status', columns: 'userId, status' },
+  { table: 'SupportMessages', name: 'idx_ticket_messages', columns: 'ticketId, createdAt' },
+  { table: 'Channels', name: 'idx_channel_invite', columns: 'inviteCode' },
+];
+
+const addMissingIndexes = async () => {
+  let added = 0;
+  for (const idx of requiredIndexes) {
+    try {
+      const [existing] = await sequelize.query(
+        `SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+        { replacements: [process.env.DB_NAME, idx.table, idx.name] }
+      );
+      if (existing.length === 0) {
+        await sequelize.query(`CREATE INDEX \`${idx.name}\` ON \`${idx.table}\` (${idx.columns})`);
+        console.log(`Created index ${idx.table}.${idx.name}`);
+        added++;
+      }
+    } catch (err) {
+      console.error(`Failed to create index ${idx.table}.${idx.name}:`, err.message);
+    }
+  }
+  return added;
+};
+
 const runMigrations = async () => {
   console.log('Running safe migrations...');
   const removed = await removeDuplicateIndexes();
   if (removed > 0) console.log(`Cleaned ${removed} duplicate index(es)`);
   const added = await addMissingColumns();
   if (added > 0) console.log(`Added ${added} missing column(s)`);
-  if (removed === 0 && added === 0) console.log('Schema is up to date');
+  const idxAdded = await addMissingIndexes();
+  if (idxAdded > 0) console.log(`Created ${idxAdded} missing index(es)`);
+  if (removed === 0 && added === 0 && idxAdded === 0) console.log('Schema is up to date');
 };
 
 module.exports = { runMigrations };

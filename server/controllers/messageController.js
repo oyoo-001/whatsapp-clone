@@ -161,8 +161,9 @@ exports.getMessages = async (req, res) => {
 
 exports.getConversations = async (req, res) => {
   try {
+    const userId = req.user.id;
     const sentMessages = await Message.findAll({
-      where: { senderId: req.user.id },
+      where: { senderId: userId },
       attributes: [
         'receiverId',
         [Sequelize.fn('MAX', Sequelize.col('createdAt')), 'lastMessageAt'],
@@ -172,7 +173,7 @@ exports.getConversations = async (req, res) => {
     });
 
     const receivedMessages = await Message.findAll({
-      where: { receiverId: req.user.id },
+      where: { receiverId: userId },
       attributes: [
         'senderId',
         [Sequelize.fn('MAX', Sequelize.col('createdAt')), 'lastMessageAt'],
@@ -232,68 +233,108 @@ exports.getConversations = async (req, res) => {
     }
 
     const readBroadcastIds = await BroadcastRead.findAll({
-      where: { userId: req.user.id },
+      where: { userId },
       attributes: ['broadcastId'],
       raw: true,
     });
     const readBroadcastIdSet = new Set(readBroadcastIds.map(r => r.broadcastId));
     const totalBroadcasts = await Broadcast.count({ where: { isDeleted: false } });
 
-    const conversations = await Promise.all(
-      users.map(async (user) => {
-        let lastMessage;
-        let unreadCount = 0;
-        let lastMessageAt = conversationMap.get(user.id);
+    // Batch unread counts — 1 grouped query instead of N individual queries
+    const unreadRows = await Message.findAll({
+      where: { receiverId: userId, isRead: false },
+      attributes: ['senderId', [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']],
+      group: ['senderId'],
+      raw: true,
+    });
+    const unreadCountMap = new Map(unreadRows.map(r => [r.senderId, parseInt(r.count)]));
 
-        if (user.id === 0) {
-          const bc = latestBroadcast;
-          if (bc) {
-            lastMessage = {
-              id: bc.id,
-              senderId: 0,
-              receiverId: req.user.id,
-              content: bc.content,
-              messageType: bc.messageType,
-              fileUrl: bc.fileUrl,
-              fileSize: bc.fileSize,
-              mimeType: bc.mimeType,
-              isBroadcast: true,
-              isDeleted: false,
-              createdAt: bc.createdAt,
-              sender: bc.sender || { id: 0, username: 'TuChat', status: 'TuChat Team, we value you' },
-            };
-          }
-          unreadCount = totalBroadcasts - readBroadcastIdSet.size;
-          if (unreadCount < 0) unreadCount = 0;
-          if (!lastMessageAt && bc) {
-            lastMessageAt = bc.createdAt;
-          }
-        } else {
-          lastMessage = await Message.findOne({
-            where: {
-              [Op.or]: [
-                { senderId: req.user.id, receiverId: user.id },
-                { senderId: user.id, receiverId: req.user.id },
-              ],
-            },
-            order: [['createdAt', 'DESC']],
-            include: [
-              { model: User, as: 'sender', attributes: ['id', 'username'] },
+    // Batch latest messages — fetch last 300 messages and deduplicate by partner
+    const recentMessages = await Message.findAll({
+      where: {
+        [Op.or]: [
+          { senderId: userId },
+          { receiverId: userId },
+        ],
+        isDeleted: false,
+        isBroadcast: false,
+      },
+      order: [['createdAt', 'DESC']],
+      limit: 300,
+      include: [
+        { model: User, as: 'sender', attributes: ['id', 'username'] },
+      ],
+    });
+
+    const latestMessageMap = new Map();
+    for (const msg of recentMessages) {
+      const partnerId = msg.senderId === userId ? msg.receiverId : msg.senderId;
+      if (!latestMessageMap.has(partnerId)) {
+        latestMessageMap.set(partnerId, msg);
+      }
+    }
+
+    // Fallback for partners whose latest message is older than 300
+    for (const uid of realUserIds) {
+      if (!latestMessageMap.has(uid)) {
+        const msg = await Message.findOne({
+          where: {
+            [Op.or]: [
+              { senderId: userId, receiverId: uid },
+              { senderId: uid, receiverId: userId },
             ],
-          });
-          unreadCount = await Message.count({
-            where: { senderId: user.id, receiverId: req.user.id, isRead: false },
-          });
-        }
+            isDeleted: false,
+            isBroadcast: false,
+          },
+          order: [['createdAt', 'DESC']],
+          include: [
+            { model: User, as: 'sender', attributes: ['id', 'username'] },
+          ],
+        });
+        if (msg) latestMessageMap.set(uid, msg);
+      }
+    }
 
-        return {
-          user: user.toJSON(),
-          lastMessage,
-          unreadCount,
-          lastMessageAt,
-        };
-      })
-    );
+    const conversations = users.map((user) => {
+      let lastMessage = null;
+      let unreadCount = 0;
+      let lastMessageAt = conversationMap.get(user.id);
+
+      if (user.id === 0) {
+        const bc = latestBroadcast;
+        if (bc) {
+          lastMessage = {
+            id: bc.id,
+            senderId: 0,
+            receiverId: userId,
+            content: bc.content,
+            messageType: bc.messageType,
+            fileUrl: bc.fileUrl,
+            fileSize: bc.fileSize,
+            mimeType: bc.mimeType,
+            isBroadcast: true,
+            isDeleted: false,
+            createdAt: bc.createdAt,
+            sender: bc.sender || { id: 0, username: 'TuChat', status: 'TuChat Team, we value you' },
+          };
+        }
+        unreadCount = totalBroadcasts - readBroadcastIdSet.size;
+        if (unreadCount < 0) unreadCount = 0;
+        if (!lastMessageAt && bc) {
+          lastMessageAt = bc.createdAt;
+        }
+      } else {
+        lastMessage = latestMessageMap.get(user.id) || null;
+        unreadCount = unreadCountMap.get(user.id) || 0;
+      }
+
+      return {
+        user: user.toJSON(),
+        lastMessage,
+        unreadCount,
+        lastMessageAt,
+      };
+    });
 
     conversations.sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
 
