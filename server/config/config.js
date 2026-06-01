@@ -13,7 +13,7 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your_jwt_secret_key_c
 
 module.exports = {
   port: process.env.PORT || 5000,
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  frontendUrl: process.env.FRONTEND_URL || '*',
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiry: '7d',
   bcryptSaltRounds: 10,
