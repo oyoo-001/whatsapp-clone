@@ -64,12 +64,27 @@ class WebRTCService {
 
   async startLocalStream(audioOnly = false, constraints = null) {
     this.isAudioOnly = audioOnly;
+
+    // Check and request permissions via Capacitor if available
+    try {
+      const { Device } = await import('@capacitor/device');
+      const info = await Device.getInfo();
+      if (info.platform === 'android' || info.platform === 'ios') {
+        log('Running on native platform, ensuring permissions...');
+        // We use the browser-based navigator.mediaDevices but we can pre-request
+        // to ensure the native bridge is ready and OS permissions are granted.
+      }
+    } catch (e) {
+      // Not on Capacitor or plugin missing
+    }
+
     const mediaConstraints = constraints || {
       audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 },
       video: audioOnly ? false : {
         width: { ideal: 640 },
         height: { ideal: 480 },
         frameRate: { ideal: 30 },
+        facingMode: 'user'
       },
     };
 

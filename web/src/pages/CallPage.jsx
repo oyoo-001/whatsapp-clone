@@ -79,6 +79,14 @@ const CallPage = () => {
     let cancelled = false;
     const init = async () => {
       try {
+        // Explicitly request permissions via Capacitor for Android/iOS
+        try {
+          const { Camera } = await import('@capacitor/camera');
+          await Camera.requestPermissions({ permissions: isAudioOnly ? ['microphone'] : ['camera', 'microphone'] });
+        } catch (e) {
+          log('Capacitor permission request skipped or failed:', e);
+        }
+
         await webrtcService.startLocalStream(isAudioOnly);
         if (cancelled) return;
         if (localRef.current && webrtcService.localStream) {
@@ -86,7 +94,10 @@ const CallPage = () => {
           localRef.current.muted = true;
         }
       } catch (err) {
-        if (!cancelled) setError('Could not access camera/microphone. Please check permissions.');
+        if (!cancelled) {
+          console.error('Call init error:', err);
+          setError('Could not access camera/microphone. Please ensure you have granted permission in your device settings.');
+        }
       }
     };
     init();
