@@ -29,35 +29,41 @@ const supportRoutes = require("./routes/support");
 const app = express();
 const server = http.createServer(app);
 
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 const isProduction = process.env.NODE_ENV === "production";
 
 // Security headers
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: isProduction ? {
-    directives: {
-      defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      connectSrc: ["'self'", "https://res.cloudinary.com"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'", "https://res.cloudinary.com"],
-    },
-  } : false,
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: isProduction
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            connectSrc: ["'self'", "https://res.cloudinary.com"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'", "https://res.cloudinary.com"],
+          },
+        }
+      : false,
+  }),
+);
 
 // CORS
 const corsOrigin = isProduction ? config.frontendUrl : "*";
-app.use(cors({
-  origin: corsOrigin,
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: !isProduction ? undefined : true,
-}));
+app.use(
+  cors({
+    origin: corsOrigin,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: !isProduction ? undefined : true,
+  }),
+);
 
 const io = socketIo(server, {
   cors: {
@@ -97,62 +103,70 @@ app.use("/api", apiLimiter);
 
 // Static uploads - served via authenticated route instead of public
 
-
 if (isProduction) {
   const frontendDist = path.join(__dirname, "..", "web", "dist");
   app.use(express.static(frontendDist));
 
   // OG meta for invite link previews
-  app.get(["/channel/invite/:code", "/group/invite/:code"], async (req, res, next) => {
-    try {
-      const isChannel = req.path.startsWith("/channel");
-      let title = "TuChat";
-      let description = "Join on TuChat";
-      let icon = "/pwa-icon.svg";
+  app.get(
+    ["/channel/invite/:code", "/group/invite/:code"],
+    async (req, res, next) => {
+      try {
+        const isChannel = req.path.startsWith("/channel");
+        let title = "TuChat";
+        let description = "Join on TuChat";
+        let icon = "/pwa-icon.svg";
 
-      if (isChannel) {
-        const ch = await Channel.findOne({
-          where: { inviteCode: req.params.code },
-          include: [{ model: User, as: 'creator', attributes: ['username'] }],
-        });
-        if (ch) {
-          title = `${ch.name} · TuChat Channel`;
-          description = ch.description || `Channel by ${ch.creator?.username || 'Unknown'}`;
-          if (ch.avatar) icon = ch.avatar;
+        if (isChannel) {
+          const ch = await Channel.findOne({
+            where: { inviteCode: req.params.code },
+            include: [{ model: User, as: "creator", attributes: ["username"] }],
+          });
+          if (ch) {
+            title = `${ch.name} · TuChat Channel`;
+            description =
+              ch.description ||
+              `Channel by ${ch.creator?.username || "Unknown"}`;
+            if (ch.avatar) icon = ch.avatar;
+          }
+        } else {
+          const grp = await Group.findOne({
+            where: { inviteCode: req.params.code },
+            include: [{ model: User, as: "creator", attributes: ["username"] }],
+          });
+          if (grp) {
+            title = `${grp.name} · TuChat Group`;
+            description =
+              grp.description ||
+              `Group by ${grp.creator?.username || "Unknown"}`;
+            if (grp.avatar) icon = grp.avatar;
+          }
         }
-      } else {
-        const grp = await Group.findOne({
-          where: { inviteCode: req.params.code },
-          include: [{ model: User, as: 'creator', attributes: ['username'] }],
-        });
-        if (grp) {
-          title = `${grp.name} · TuChat Group`;
-          description = grp.description || `Group by ${grp.creator?.username || 'Unknown'}`;
-          if (grp.avatar) icon = grp.avatar;
-        }
-      }
 
-      const html = `<!DOCTYPE html>
+        const html = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta name="description" content="${description.replace(/"/g, '&quot;')}"/>
-<meta property="og:title" content="${title.replace(/"/g, '&quot;')}"/>
-<meta property="og:description" content="${description.replace(/"/g, '&quot;')}"/>
+<meta name="description" content="${description.replace(/"/g, "&quot;")}"/>
+<meta property="og:title" content="${title.replace(/"/g, "&quot;")}"/>
+<meta property="og:description" content="${description.replace(/"/g, "&quot;")}"/>
 <meta property="og:image" content="${icon}"/>
 <meta property="og:image:width" content="400"/>
 <meta property="og:image:height" content="400"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="${title.replace(/"/g, '&quot;')}"/>
-<meta name="twitter:description" content="${description.replace(/"/g, '&quot;')}"/>
+<meta name="twitter:title" content="${title.replace(/"/g, "&quot;")}"/>
+<meta name="twitter:description" content="${description.replace(/"/g, "&quot;")}"/>
 <meta name="twitter:image" content="${icon}"/>
 <meta http-equiv="refresh" content="0;url=${req.originalUrl}"/>
 <title>${title}</title>
 </head><body><script>location.href='${req.originalUrl}'</script></body></html>`;
-      res.send(html);
-    } catch { next(); }
-  });
+        res.send(html);
+      } catch {
+        next();
+      }
+    },
+  );
 
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/")) return next();

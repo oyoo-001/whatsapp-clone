@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TuChat</string>
+    <string name="title_activity_main">TuChat</string>
+    <string name="package_name">com.tuchat.app</string>
+    <string name="custom_url_scheme">com.tuchat.app</string>
+</resources>

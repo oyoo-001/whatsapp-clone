@@ -101,10 +101,10 @@ const CreateStatusModal = ({ open, onClose }) => {
       if (url && url.startsWith('blob:')) {
         const blob = audioBlob || mediaFile;
         if (blob) {
-          const formData = new FormData();
-          formData.append('file', blob, `status.${mediaType === 'audio' ? 'webm' : mediaType === 'video' ? 'mp4' : 'jpg'}`);
-          const { data } = await uploadAPI.upload(formData);
-          url = data.url || data.fileUrl;
+          const ext = mediaType === 'audio' ? 'webm' : mediaType === 'video' ? 'mp4' : 'jpg';
+          const file = new File([blob], `status-${Date.now()}.${ext}`, { type: blob.type });
+          const { data } = await uploadAPI.upload(file);
+          url = data.fileUrl;
         }
       }
 

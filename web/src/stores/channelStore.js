@@ -16,7 +16,7 @@ const useChannelStore = create((set, get) => ({
   },
 
   createChannel: async (name, description) => {
-    const { data } = await channelsAPI.createChannel({ name, description });
+    const { data } = await channelsAPI.create({ name, description });
     set((state) => ({ channels: [data.channel, ...state.channels] }));
     return data.channel;
   },
