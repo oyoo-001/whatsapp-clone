@@ -31,30 +31,22 @@ import ProtectedRoute from './components/ProtectedRoute';
 import './styles/global.css';
 
 const App = () => {
-  const { initialLoading, loadUser } = useAuthStore();
-  const [updateRequired, setUpdateRequired] = useState(false);
-  const [updateUrl, setUpdateUrl] = useState('');
+  const { initialLoading, loadUser, setUpdateInfo, updateInfo } = useAuthStore();
 
   useEffect(() => {
     const checkVersion = async () => {
       try {
-        // 1. Get current version (Native or Web)
         let currentVersion = '1.0.0';
         try {
           const info = await CapApp.getInfo();
           currentVersion = info.version;
-        } catch (e) {
-          // Fallback if not running on native
-        }
+        } catch (e) {}
 
-        // 2. Fetch required version from backend
         const response = await systemAPI.checkVersion();
         const { minVersion, downloadUrl } = response.data;
 
-        // 3. Compare (simple version comparison)
         if (minVersion && isUpdateRequired(currentVersion, minVersion)) {
-          setUpdateRequired(true);
-          setUpdateUrl(downloadUrl);
+          setUpdateInfo({ required: true, downloadUrl });
         }
       } catch (error) {
         console.error('Failed to check version:', error);
@@ -114,7 +106,7 @@ const App = () => {
 
   return (
     <ToastProvider>
-      {updateRequired && <ForceUpdateModal updateUrl={updateUrl} />}
+      {updateInfo.required && <ForceUpdateModal updateUrl={updateInfo.downloadUrl} />}
       <BrowserRouter>
         <InvitePreviewModal />
         <Routes>

@@ -8,6 +8,9 @@ const useAuthStore = create((set) => ({
   isAuthenticated: false,
   isLoading: false,
   initialLoading: true,
+  updateInfo: { required: false, downloadUrl: '' },
+
+  setUpdateInfo: (info) => set({ updateInfo: info }),
 
   login: async (phoneNumber, password) => {
     set({ isLoading: true });
