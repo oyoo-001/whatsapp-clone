@@ -17,13 +17,13 @@ const useGroupStore = create((set, get) => ({
   },
 
   createGroup: async (name) => {
-    const { data } = await groupsAPI.createGroup({ name });
+    const { data } = await groupsAPI.create({ name });
     set((state) => ({ groups: [data.group, ...state.groups] }));
     return data.group;
   },
 
   updateGroup: async (groupId, updates) => {
-    const { data } = await groupsAPI.updateGroup(groupId, updates);
+    const { data } = await groupsAPI.update(groupId, updates);
     set((state) => ({
       groups: state.groups.map((g) => (String(g.id) === String(groupId) ? data.group : g)),
     }));
@@ -46,7 +46,7 @@ const useGroupStore = create((set, get) => ({
   },
 
   removeMember: async (groupId, userId) => {
-    await groupsAPI.removeMember(groupId, { userId });
+    await groupsAPI.removeMember(groupId, userId);
     set((state) => ({
       groups: state.groups.map((g) =>
         String(g.id) === String(groupId)
@@ -57,7 +57,7 @@ const useGroupStore = create((set, get) => ({
   },
 
   exitGroup: async (groupId) => {
-    await groupsAPI.exitGroup(groupId);
+    await groupsAPI.exit(groupId);
     set((state) => ({
       groups: state.groups.filter((g) => String(g.id) !== String(groupId)),
     }));

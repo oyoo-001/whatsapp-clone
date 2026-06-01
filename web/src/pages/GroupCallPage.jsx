@@ -41,14 +41,6 @@ const GroupCallPage = () => {
     let cancelled = false;
     const init = async () => {
       try {
-        // Explicitly request permissions via Capacitor for Android/iOS
-        try {
-          const { Camera } = await import('@capacitor/camera');
-          await Camera.requestPermissions({ permissions: isAudioOnly ? ['microphone'] : ['camera', 'microphone'] });
-        } catch (e) {
-          console.log('Capacitor permission request skipped:', e);
-        }
-
         await webrtcService.startLocalStream(isAudioOnly);
         if (cancelled) return;
         if (localRef.current && webrtcService.localStream) {

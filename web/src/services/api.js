@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_PREFIX = "http://tuconnect.onrender.com";
+const API_PREFIX = "https://tuconnect.onrender.com";
 
 const api = axios.create({
   baseURL: `${API_PREFIX}/api`,
@@ -75,10 +75,15 @@ export const groupsAPI = {
   create: (data) => api.post("/groups", data),
   getMyGroups: () => api.get("/groups"),
   getGroup: (id) => api.get(`/groups/${id}`),
+  update: (id, data) => api.put(`/groups/${id}`, data),
+  updateAvatar: (id, data) => api.put(`/groups/${id}/avatar`, data),
   addMembers: (groupId, userIds) =>
     api.post(`/groups/${groupId}/members`, { userIds }),
   removeMember: (groupId, userId) =>
     api.delete(`/groups/${groupId}/members`, { data: { userId } }),
+  exit: (id) => api.post(`/groups/${id}/exit`),
+  updateMemberRole: (groupId, userId) =>
+    api.put(`/groups/${groupId}/members/${userId}/role`),
   generateInviteCode: (groupId) => api.post(`/groups/${groupId}/invite`),
   generateInvite: (groupId) => api.post(`/groups/${groupId}/invite`),
   regenerateInviteCode: (groupId) =>

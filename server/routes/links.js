@@ -25,8 +25,9 @@ const parseOg = (html) => {
 };
 
 router.post('/preview', auth, async (req, res) => {
+  let url;
   try {
-    const { url } = req.body;
+    url = req.body.url;
     if (!url || !/^https?:\/\/.+/.test(url)) {
       return res.status(400).json({ error: 'Invalid URL' });
     }
